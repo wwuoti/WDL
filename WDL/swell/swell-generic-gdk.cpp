@@ -50,7 +50,14 @@ extern "C" {
   #include <X11/extensions/XInput2.h>
 #endif
 
-#include <X11/Xatom.h>
+#ifdef GDK_WINDOWING_X11
+    #include <X11/Xatom.h>
+#endif 
+
+#ifdef GDK_WINDOWING_WAYLAND
+    #include <gdk/gdkwayland.h>
+#endif
+
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
 
@@ -183,8 +190,11 @@ static void on_deactivate()
 {
   swell_app_is_inactive=true;
   HWND lf = swell_oswindow_to_hwnd(SWELL_focused_oswindow);
-  s_last_desktop = lf && lf->m_oswindow ? _gdk_x11_window_get_desktop(lf->m_oswindow)+1 : 0;
-
+//TODO: find out if lf->m_oswindow contains GDK window?
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_WINDOW (lf->m_oswindow))
+      s_last_desktop = lf && lf->m_oswindow ? _gdk_x11_window_get_desktop(lf->m_oswindow)+1 : 0;
+#endif
   HWND h = SWELL_topwindows; 
   while (h)
   {
@@ -297,7 +307,7 @@ void SWELL_initargs(int *argc, char ***argv)
     *(void **)&_gdk_set_allowed_backends = dlsym(RTLD_DEFAULT,"gdk_set_allowed_backends");
 
     if (_gdk_set_allowed_backends)
-      _gdk_set_allowed_backends("x11");
+      _gdk_set_allowed_backends("wayland, x11");
 #endif
 
 #ifdef SWELL_SUPPORT_GTK
@@ -555,7 +565,11 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
           }
 
           if (s_force_window_time)
-            gdk_x11_window_set_user_time(hwnd->m_oswindow,s_force_window_time);
+
+#ifdef GDK_WINDOWING_X11
+            if (GDK_IS_X11_WINDOW (hwnd->m_oswindow))
+                gdk_x11_window_set_user_time(hwnd->m_oswindow,s_force_window_time);
+#endif
 
           if (!wantfocus || swell_app_is_inactive)
             gdk_window_set_focus_on_map(hwnd->m_oswindow,false);
@@ -593,7 +607,11 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
             gdk_window_show_unraised(hwnd->m_oswindow);
 
           if (s_last_desktop>0)
+
+#ifdef GDK_WINDOWING_X11
+            if (GDK_IS_X11_WINDOW (hwnd->m_oswindow))
             _gdk_x11_window_move_to_desktop(hwnd->m_oswindow,s_last_desktop-1);
+#endif
 
           if (!hwnd->m_oswindow_fullscreen)
           {
@@ -2137,9 +2155,24 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
     ospar = gdk_screen_get_root_window(gdk_screen_get_default());
   }
 
-  Display *disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
-  Window w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-  GdkWindow *gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+#ifdef GDK_WINDOWING_X11
+  Display *disp = nullptr;
+  Window w = 0;
+  GdkWindow *gdkw = nullptr;
+  if (GDK_IS_X11_WINDOW (gdk_window_get_display(ospar)))
+  {
+      disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
+      w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+      gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+  }
+#endif
+
+#ifdef GDK_WINDOWING_WAYLAND
+  if (GDK_IS_WAYLAND_WINDOW (gdk_window_get_display(ospar)))
+  {
+  }
+
+#endif
 
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp) : NULL;
