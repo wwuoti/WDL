@@ -195,6 +195,12 @@ static void on_deactivate()
     if (GDK_IS_X11_WINDOW (lf->m_oswindow))
       s_last_desktop = lf && lf->m_oswindow ? _gdk_x11_window_get_desktop(lf->m_oswindow)+1 : 0;
 #endif
+#ifdef GDK_WINDOWING_WAYLAND
+    if (GDK_IS_WAYLAND_WINDOW (lf->m_oswindow))
+        //TODO: make a function that gets the desktop on wayland
+      s_last_desktop = lf && lf->m_oswindow ? 0+1 : 0;
+        
+#endif
   HWND h = SWELL_topwindows; 
   while (h)
   {
