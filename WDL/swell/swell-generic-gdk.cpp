@@ -199,6 +199,7 @@ static void on_deactivate()
     if (GDK_IS_WAYLAND_WINDOW (lf->m_oswindow))
         //TODO: make a function that gets the desktop on wayland
       s_last_desktop = lf && lf->m_oswindow ? 0+1 : 0;
+  printf("on_deactivate?\n");
         
 #endif
   HWND h = SWELL_topwindows; 
@@ -738,6 +739,7 @@ static guint swell_gdkConvertKey(guint key)
 
 static LRESULT SendMouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+  //TODO: fix mouse handling so that elements are clicked on wayland too
   if (!hwnd || !hwnd->m_wndproc) return -1;
   if (!IsWindowEnabled(hwnd)) 
   {
@@ -2141,6 +2143,7 @@ static GdkFilterReturn filterCreateShowProc(GdkXEvent *xev, GdkEvent *event, gpo
 
 HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
 {
+  printf("Is this needed?\n");
   HWND hwnd = NULL;
   *wref = NULL;
 
