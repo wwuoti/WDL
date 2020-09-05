@@ -199,7 +199,6 @@ static void on_deactivate()
     if (GDK_IS_WAYLAND_WINDOW (lf->m_oswindow))
         //TODO: make a function that gets the desktop on wayland
       s_last_desktop = lf && lf->m_oswindow ? 0+1 : 0;
-  printf("on_deactivate?\n");
         
 #endif
   HWND h = SWELL_topwindows; 
@@ -614,11 +613,17 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
             gdk_window_show_unraised(hwnd->m_oswindow);
 
           if (s_last_desktop>0)
+          {
 
 #ifdef GDK_WINDOWING_X11
             if (GDK_IS_X11_WINDOW (hwnd->m_oswindow))
             _gdk_x11_window_move_to_desktop(hwnd->m_oswindow,s_last_desktop-1);
 #endif
+
+#ifdef GDK_WINDOWING_WAYLAND
+            printf("move_to_desktop needed\n");
+#endif
+          }
 
           if (!hwnd->m_oswindow_fullscreen)
           {
@@ -1712,7 +1717,7 @@ bool GetWindowRect(HWND hwnd, RECT *r)
 void swell_oswindow_begin_resize(SWELL_OSWINDOW wnd)
 {
   // make sure window is resizable (hints will be re-set on upcoming CONFIGURE event)
-  gdk_window_set_geometry_hints(wnd,NULL,(GdkWindowHints) 0); 
+  //gdk_window_set_geometry_hints(wnd,NULL,(GdkWindowHints) 0); 
 }
 
 void swell_oswindow_resize(SWELL_OSWINDOW wnd, int reposflag, RECT f)
@@ -2143,7 +2148,6 @@ static GdkFilterReturn filterCreateShowProc(GdkXEvent *xev, GdkEvent *event, gpo
 
 HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
 {
-  printf("Is this needed?\n");
   HWND hwnd = NULL;
   *wref = NULL;
 
@@ -2164,21 +2168,34 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
     ospar = gdk_screen_get_root_window(gdk_screen_get_default());
   }
 
-#ifdef GDK_WINDOWING_X11
-  Display *disp = nullptr;
+  Display *disp = NULL;
   Window w = 0;
-  GdkWindow *gdkw = nullptr;
+  GdkWindow *gdkw = NULL;
+#ifdef GDK_WINDOWING_X11
   if (GDK_IS_X11_WINDOW (gdk_window_get_display(ospar)))
   {
-      disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
-      w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-      gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+    disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
+    w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+    gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
   }
 #endif
 
 #ifdef GDK_WINDOWING_WAYLAND
   if (GDK_IS_WAYLAND_WINDOW (gdk_window_get_display(ospar)))
   {
+    GdkWindowAttr attr={0,};
+    attr.title = (char *)hwnd->m_title.Get();
+    attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
+    attr.x = r->left;
+    attr.y = r->top;
+    attr.width = r->right-r->left;
+    attr.height = r->bottom-r->top;
+    attr.wclass = GDK_INPUT_OUTPUT;
+    const char *appname = g_swell_appname;
+    attr.wmclass_name = (gchar*)appname;
+    attr.wmclass_class = (gchar*)appname;
+    attr.window_type = GDK_WINDOW_TOPLEVEL;
+    gdkw = gdk_window_new(ospar, &attr, 0);
   }
 
 #endif
@@ -2190,8 +2207,10 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
   {
     *wref = (void *) w;
 
+#ifdef GDK_WINDOWING_X11
+  if (GDK_IS_X11_WINDOW (gdk_window_get_display(ospar)))
     XSelectInput(disp, w, StructureNotifyMask | SubstructureNotifyMask);
-
+#endif
     static bool filt_add;
     if (!filt_add)
     {
