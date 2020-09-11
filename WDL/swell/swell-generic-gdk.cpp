@@ -975,8 +975,9 @@ static void OnExposeEvent(GdkEventExpose *exp)
     void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int bmout_ypos, bool forceref);
     SWELL_internalLICEpaint(hwnd, &tmpbm, r.left, r.top, forceref);
 
-    GdkRectangle rrr={r.left,r.top,r.right-r.left,r.bottom-r.top};
-    gdk_window_begin_paint_rect(exp->window, &rrr);
+    cairo_rectangle_int_t rect={r.left,r.top,r.right-r.left,r.bottom-r.top};
+    const cairo_region_t* rrr = cairo_region_create_rectangle(&rect);
+    GdkDrawingContext* context = gdk_window_begin_draw_frame(exp->window, rrr);
 
     cairo_t *crc = gdk_cairo_create (exp->window);
     LICE_IBitmap *bm = hwnd->m_backingstore;
@@ -986,7 +987,7 @@ static void OnExposeEvent(GdkEventExpose *exp)
     cairo_destroy(crc);
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
 
-    gdk_window_end_paint(exp->window);
+    gdk_window_end_draw_frame(exp->window, context);
   }
 #endif
 }
