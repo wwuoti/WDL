@@ -660,12 +660,12 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(hwnd->m_oswindow, rrr);
 
-    ////cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
-    //cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
-    //cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
-    //if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
-    //cairo_paint(crc);
-    ////cairo_destroy(crc);
+    //cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
+    cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
+    cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
+    if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
+    cairo_paint(crc);
+    //cairo_destroy(crc);
 
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
 
