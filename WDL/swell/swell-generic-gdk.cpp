@@ -982,15 +982,16 @@ static void OnExposeEvent(GdkEventExpose *exp)
     const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(exp->window, rrr);
 
-    cairo_t *crc = gdk_cairo_create (exp->window);
+    //cairo_t *crc = gdk_cairo_create (exp->window);
+    cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
     LICE_IBitmap *bm = hwnd->m_backingstore;
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
     if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
     cairo_paint(crc);
-    cairo_destroy(crc);
-    if (temp_surface) bm->Extended(0xca140,temp_surface); // release
+    //cairo_destroy(crc);
 
     gdk_window_end_draw_frame(exp->window, context);
+    //if (temp_surface) bm->Extended(0xca140,temp_surface); // release
   }
 #endif
 }
@@ -2004,7 +2005,14 @@ bridgeState::~bridgeState()
   if (w) 
   {
     g_object_unref(G_OBJECT(w));
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_WINDOW(w))
     XDestroyWindow(native_disp,native_w);
+#endif
+#ifdef GDK_WINDOWING_WAYLAND
+    if GDK_IS_WAYLAND_WINDOW(w)
+      gdk_window_destroy(w);
+#endif
   }
 }
 bridgeState::bridgeState(bool needrep, GdkWindow *_w, Window _nw, Display *_disp)
@@ -2179,21 +2187,25 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
   Display *disp = NULL;
   Window w = 0;
   GdkWindow *gdkw = NULL;
+  GdkDisplay *gdkdisp = gdk_window_get_display(ospar);
 #ifdef GDK_WINDOWING_X11
-  if (GDK_IS_X11_WINDOW (gdk_window_get_display(ospar)))
+  if (GDK_IS_X11_DISPLAY (gdkdisp))
   {
     disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
     w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
     gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+    if (!w){
+        printf("w is null \n");
+    }
   }
 #endif
 
 #ifdef GDK_WINDOWING_WAYLAND
-  if (GDK_IS_WAYLAND_WINDOW (gdk_window_get_display(ospar)))
+  if (GDK_IS_WAYLAND_DISPLAY (gdkdisp))
   {
     GdkWindowAttr attr={0,};
-    attr.title = (char *)hwnd->m_title.Get();
-    attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
+    //attr.title = (char *)hwnd->m_title.Get();
+    //attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
     attr.x = r->left;
     attr.y = r->top;
     attr.width = r->right-r->left;
@@ -2202,7 +2214,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
     const char *appname = g_swell_appname;
     attr.wmclass_name = (gchar*)appname;
     attr.wmclass_class = (gchar*)appname;
-    attr.window_type = GDK_WINDOW_TOPLEVEL;
+    attr.window_type = GDK_WINDOW_CHILD;
     gdkw = gdk_window_new(ospar, &attr, 0);
   }
 
@@ -2216,7 +2228,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
     *wref = (void *) w;
 
 #ifdef GDK_WINDOWING_X11
-  if (GDK_IS_X11_WINDOW (gdk_window_get_display(ospar)))
+  if (GDK_IS_X11_DISPLAY(gdk_window_get_display(ospar)))
     XSelectInput(disp, w, StructureNotifyMask | SubstructureNotifyMask);
 #endif
     static bool filt_add;
