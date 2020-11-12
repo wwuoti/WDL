@@ -193,6 +193,7 @@ static void on_deactivate()
   swell_app_is_inactive=true;
   HWND lf = swell_oswindow_to_hwnd(SWELL_focused_oswindow);
 //TODO: find out if lf->m_oswindow contains GDK window?
+//TODO: fix segfaulting here
 #ifdef GDK_WINDOWING_X11
     if (GDK_IS_X11_WINDOW (lf->m_oswindow))
       s_last_desktop = lf && lf->m_oswindow ? _gdk_x11_window_get_desktop(lf->m_oswindow)+1 : 0;
