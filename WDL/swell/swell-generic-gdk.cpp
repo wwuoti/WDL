@@ -623,7 +623,6 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
 #endif
 
 #ifdef GDK_WINDOWING_WAYLAND
-            printf("move_to_desktop needed\n");
 #endif
           }
 
@@ -657,18 +656,20 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     LICE_IBitmap *bm = hwnd->m_backingstore;
     LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
 
-    GdkRectangle rrr={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
-    gdk_window_begin_paint_rect(hwnd->m_oswindow, &rrr);
+    cairo_rectangle_int_t cairo_rect={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
+    const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
+    GdkDrawingContext* context = gdk_window_begin_draw_frame(hwnd->m_oswindow, rrr);
 
-    cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
-    cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
-    if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
-    cairo_paint(crc);
-    cairo_destroy(crc);
+    ////cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
+    //cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
+    //cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
+    //if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
+    //cairo_paint(crc);
+    ////cairo_destroy(crc);
 
-    gdk_window_end_paint(hwnd->m_oswindow);
+    gdk_window_end_draw_frame(hwnd->m_oswindow, context);
 
-    if (temp_surface) bm->Extended(0xca140,temp_surface); // release
+    //if (temp_surface) bm->Extended(0xca140,temp_surface); // release
 
   }
 #endif
@@ -977,8 +978,9 @@ static void OnExposeEvent(GdkEventExpose *exp)
     void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int bmout_ypos, bool forceref);
     SWELL_internalLICEpaint(hwnd, &tmpbm, r.left, r.top, forceref);
 
-    GdkRectangle rrr={r.left,r.top,r.right-r.left,r.bottom-r.top};
-    gdk_window_begin_paint_rect(exp->window, &rrr);
+    cairo_rectangle_int_t cairo_rect={r.left,r.top,r.right-r.left,r.bottom-r.top};
+    const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
+    GdkDrawingContext* context = gdk_window_begin_draw_frame(exp->window, rrr);
 
     cairo_t *crc = gdk_cairo_create (exp->window);
     LICE_IBitmap *bm = hwnd->m_backingstore;
@@ -988,7 +990,7 @@ static void OnExposeEvent(GdkEventExpose *exp)
     cairo_destroy(crc);
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
 
-    gdk_window_end_paint(exp->window);
+    gdk_window_end_draw_frame(exp->window, context);
   }
 #endif
 }
