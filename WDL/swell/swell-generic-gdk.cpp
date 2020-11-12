@@ -47,7 +47,9 @@ extern "C" {
 
 #if !defined(SWELL_TARGET_GDK_NO_CURSOR_HACK)
   #define SWELL_TARGET_GDK_CURSORHACK
-  #include <X11/extensions/XInput2.h>
+  #ifdef GDK_WINDOWING_X11
+    #include <X11/extensions/XInput2.h>
+  #endif
 #endif
 
 #ifdef GDK_WINDOWING_X11
@@ -2125,6 +2127,10 @@ static LRESULT xbridgeProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
   return DefWindowProc(hwnd,uMsg,wParam,lParam);
 }
 
+/*
+ * Filters all GDK event to pass for X
+ * TODO: check if similar action is required for Wayland
+ */
 static GdkFilterReturn filterCreateShowProc(GdkXEvent *xev, GdkEvent *event, gpointer data)
 {
   const XEvent *xevent = (XEvent *)xev;
@@ -2212,6 +2218,8 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
     XSelectInput(disp, w, StructureNotifyMask | SubstructureNotifyMask);
 #endif
     static bool filt_add;
+
+#ifdef GDK_WINDOWING_X11
     if (!filt_add)
     {
       filt_add=true;
@@ -2220,6 +2228,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
     SetTimer(hwnd,1,100,NULL);
     if (!need_reparent) SendMessage(hwnd,WM_SIZE,0,0);
   }
+#endif
   return hwnd;
 }
 
@@ -2449,8 +2458,15 @@ void SWELL_SetCursor(HCURSOR curs)
       if (dev && gdk_device_get_window_at_position(dev,NULL,NULL) != SWELL_focused_oswindow)
 #endif
       {
-        Display *disp = gdk_x11_display_get_xdisplay(gdkdisp);
-        Window wn =  GDK_WINDOW_XID(SWELL_focused_oswindow);
+        Display *disp = nullptr;
+        Window wn = 0;
+#ifdef GDK_WINDOWING_X11
+        if (GDK_IS_X11_DISPLAY (gdkdisp))
+        {
+          disp = gdk_x11_display_get_xdisplay(gdkdisp);
+          wn =  GDK_WINDOW_XID(SWELL_focused_oswindow);
+        }
+#endif
 #if SWELL_TARGET_GDK == 2
         gint devid=2; // hardcoded default pointing device
 #else
@@ -2458,6 +2474,7 @@ void SWELL_SetCursor(HCURSOR curs)
 #endif
         if (disp && wn)
         {
+          printf("cursorhack enabled \n");
           if (curs)
             XIDefineCursor(disp,devid,wn, gdk_x11_cursor_get_xcursor((GdkCursor*)curs));
           else
@@ -2651,11 +2668,16 @@ void swell_scaling_init(bool no_auto_hidpi)
     if (gdkdisp)
     {
       void (*p)(GdkDisplay*, gint);
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_DISPLAY (gdkdisp))
+    {
       *(void **)&p = dlsym(RTLD_DEFAULT,"gdk_x11_display_set_window_scale");
       if (p) p(gdkdisp,1);
+    } 
+#endif
     }
   }
-  #endif
+  #endif //SWELL_TARGET_GDK_3
 }
 
 
