@@ -372,6 +372,14 @@ STANDARD_CONTROL_NEEDSDISPLAY_IMPL("SysTreeView32")
   return YES;
 }
 
+/*
+- (BOOL)outlineView:(NSOutlineView *)outlineView
+   shouldExpandItem:(id)item
+{
+  return NO; // optionally while dragging?
+}
+*/
+
 - (void)outlineView:(NSOutlineView *)outlineView
     draggingSession:(NSDraggingSession *)session
        endedAtPoint:(NSPoint)screenPoint
@@ -545,6 +553,20 @@ STANDARD_CONTROL_NEEDSDISPLAY_IMPL("SysTreeView32")
 
 @implementation SWELL_ListView
 STANDARD_CONTROL_NEEDSDISPLAY_IMPL( m_lbMode ? "SysListView32_LB" : "SysListView32" )
+
+-(BOOL)accessibilityPerformShowMenu
+{
+  HWND par = (HWND)[self target];
+  if (par)
+  {
+    int row = (int)ListView_GetNextItem((HWND)self,-1,LVNI_FOCUSED);
+    int col = 0; // todo
+    NMLISTVIEW nmlv={{(HWND)self,(UINT_PTR)[self tag], NM_RCLICK}, row, col, 0, 0, 0, };
+    SendMessage(par,WM_NOTIFY,nmlv.hdr.idFrom,(LPARAM)&nmlv);
+    return YES;
+  }
+  return NO;
+}
 
 -(LONG)getSwellStyle { return style; }
 
@@ -3237,6 +3259,16 @@ HWND SWELL_MakeButton(int def, const char *label, int idx, int x, int y, int w, 
 
 STANDARD_CONTROL_NEEDSDISPLAY_IMPL("Edit")
 
+-(id)init
+{
+  if (NULL != (self = [super init]))
+  {
+    m_disable_menu = false;
+    m_tag = 0;
+  }
+  return self;
+}
+
 -(NSInteger) tag
 {
   return m_tag;
@@ -3361,10 +3393,31 @@ STANDARD_CONTROL_NEEDSDISPLAY_IMPL("Edit")
   if (didBecomeFirstResponder) SendMessage(GetParent((HWND)self),WM_COMMAND,[self tag]|(EN_SETFOCUS<<16),(LPARAM)self);
   return didBecomeFirstResponder;
 }
+
+- (void)swellDisableContextMenu:(bool)dis
+{
+  m_disable_menu = dis;
+}
+
+- (bool)swellWantsContextMenu
+{
+  return !m_disable_menu;
+}
 @end
 
 @implementation SWELL_TextField
 STANDARD_CONTROL_NEEDSDISPLAY_IMPL([self isSelectable] ? "Edit" : "Static")
+
+- (id) init
+{
+  if (NULL != (self = [super init]))
+  {
+    m_disable_menu = false;
+    m_ctlcolor_set = false;
+    m_last_dark_mode = false;
+  }
+  return self;
+}
 
 - (BOOL)becomeFirstResponder;
 {
@@ -3423,6 +3476,21 @@ STANDARD_CONTROL_NEEDSDISPLAY_IMPL([self isSelectable] ? "Edit" : "Static")
   }
   [super drawRect:r];
 }
+
+- (void)swellDisableContextMenu:(bool)dis
+{
+  m_disable_menu = dis;
+}
+
+- (NSMenu *)textView:(NSTextView *)view
+                menu:(NSMenu *)menu
+            forEvent:(NSEvent *)event
+             atIndex:(NSUInteger)charIndex
+{
+  return m_disable_menu ? nil : menu;
+}
+
+
 @end
 
 
@@ -4255,7 +4323,15 @@ void ListView_InsertColumn(HWND h, int pos, const LVCOLUMN *lvc)
   }
 
   [v addTableColumn:col];
-  v->m_cols->Add(col);
+  if (pos >= 0 && pos < v->m_cols->GetSize())
+  {
+    [v moveColumn:v->m_cols->GetSize() toColumn:pos];
+    v->m_cols->Insert(pos,col);
+  }
+  else
+  {
+    v->m_cols->Add(col);
+  }
   [col release];
 
   if (lvc->mask&LVCF_WIDTH)
@@ -5970,11 +6046,11 @@ HTREEITEM TreeView_InsertItem(HWND hwnd, TV_INSERTSTRUCT *ins)
   {
     if ([tv findItem:ins->hParent parOut:&par idxOut:&inspos])
     {
-      par = (HTREEITEM__ *)ins->hParent; 
+      par = (HTREEITEM__ *)ins->hParent;
     }
     else return 0;
   }
-  
+
   if (ins->hInsertAfter == TVI_FIRST) inspos=0;
   else if (ins->hInsertAfter == TVI_LAST || ins->hInsertAfter == TVI_SORT || !ins->hInsertAfter) inspos=par ? par->m_children.GetSize() : tv->m_items ? tv->m_items->GetSize() : 0;
   else inspos = par ? par->m_children.Find((HTREEITEM__*)ins->hInsertAfter)+1 : tv->m_items ? tv->m_items->Find((HTREEITEM__*)ins->hInsertAfter)+1 : 0;      
@@ -5990,8 +6066,22 @@ HTREEITEM TreeView_InsertItem(HWND hwnd, TV_INSERTSTRUCT *ins)
     tv->m_items->Insert(inspos,item);
   }
   else par->m_children.Insert(inspos,item);
-  
-  [tv reloadData];
+
+  // [tv reloadData] invalidates the contents and breaks stuff
+  // if we are in the middle of handling a treeview notification
+  if (SWELL_GetOSXVersion() >= 0x1070)
+  {
+    SWELL_DataHold *dh = par ? par->m_dh : NULL;
+    NSIndexSet *idxset=[NSIndexSet indexSetWithIndex:inspos];
+    [tv beginUpdates];
+    [tv insertItemsAtIndexes:idxset inParent:dh withAnimation:0];
+    [tv endUpdates];
+  }
+  else
+  {
+    [tv reloadData];
+  }
+
   return (HTREEITEM) item;
 }
 
@@ -6043,6 +6133,8 @@ void TreeView_DeleteItem(HWND hwnd, HTREEITEM item)
   
   if ([tv findItem:item parOut:&par idxOut:&idx])
   {
+    id retain_obj = [item->m_dh retain]; // workaround for macOS 10.10.5 bug using a cached pointer to this item in -beginUpdates
+
     if (par)
     {
       par->m_children.Delete(idx,true);
@@ -6051,7 +6143,20 @@ void TreeView_DeleteItem(HWND hwnd, HTREEITEM item)
     {
       tv->m_items->Delete(idx,true);
     }
-    [tv reloadData];
+
+    if (SWELL_GetOSXVersion() >= 0x1070 && [tv respondsToSelector:@selector(beginUpdates)])
+    {
+      SWELL_DataHold *dh = par ? par->m_dh : NULL;
+      NSIndexSet *idxset=[NSIndexSet indexSetWithIndex:idx];
+      [tv beginUpdates];
+      [tv removeItemsAtIndexes:idxset inParent:dh withAnimation:0];
+      [tv endUpdates];
+    }
+    else
+    {
+      [tv reloadData];
+    }
+    [retain_obj release];
   }
 }
 
@@ -6127,10 +6232,15 @@ BOOL TreeView_SetItem(HWND hwnd, LPTVITEM pitem)
   if (![(SWELL_TreeView*)hwnd findItem:pitem->hItem parOut:&par idxOut:&idx]) return FALSE;
   
   HTREEITEM__ *ti = (HTREEITEM__*)pitem->hItem;
-  
-  if (pitem->mask & TVIF_CHILDREN) ti->m_haschildren = pitem->cChildren?1:0;
+
+  bool need_reload=false;
+  if (pitem->mask & TVIF_CHILDREN)
+  {
+    if (!ti->m_haschildren != !pitem->cChildren) need_reload=true;
+    ti->m_haschildren = pitem->cChildren?1:0;
+  }
   if (pitem->mask & TVIF_PARAM)  ti->m_param =  pitem->lParam;
-  
+
   if ((pitem->mask&TVIF_TEXT)&&pitem->pszText)
   {
     free(ti->m_value);
@@ -6169,7 +6279,11 @@ BOOL TreeView_SetItem(HWND hwnd, LPTVITEM pitem)
   
   if (pitem->stateMask & TVIS_EXPANDED)
     TreeView_Expand(hwnd,pitem->hItem,(pitem->state&TVIS_EXPANDED)?TVE_EXPAND:TVE_COLLAPSE);
-    
+
+  if (need_reload)
+  {
+    [(SWELL_TreeView*)hwnd reloadItem:ti->m_dh];
+  }
   
   return TRUE;
 }
@@ -6204,7 +6318,7 @@ HTREEITEM TreeView_HitTest(HWND hwnd, TVHITTESTINFO *hti)
   }
   if (y >= maxy)
   {
-    hti->flags |= TVHT_BELOW;
+    hti->flags |= TVHT_NOWHERE;
   }
   
   return NULL; // not hit
@@ -6219,6 +6333,18 @@ HTREEITEM TreeView_GetRoot(HWND hwnd)
   return (HTREEITEM) tv->m_items->Get(0);
 }
 
+HTREEITEM TreeView_GetParent(HWND hwnd, HTREEITEM item)
+{
+  if (WDL_NOT_NORMALLY(!hwnd || ![(id)hwnd isKindOfClass:[SWELL_TreeView class]])) return NULL;
+
+  if (!item) return TreeView_GetRoot(hwnd);
+
+  SWELL_TreeView *tv=(SWELL_TreeView*)hwnd;
+  HTREEITEM__ *par=NULL;
+  int idx=0;
+  [tv findItem:item parOut:&par idxOut:&idx];
+  return par;
+}
 HTREEITEM TreeView_GetChild(HWND hwnd, HTREEITEM item)
 {
   if (WDL_NOT_NORMALLY(!hwnd || ![(id)hwnd isKindOfClass:[SWELL_TreeView class]])) return NULL;
@@ -6523,6 +6649,7 @@ STANDARD_CONTROL_NEEDSDISPLAY_IMPL("combobox")
   {
     m_ids=new WDL_PtrList<char>;
     m_ignore_selchg = -1;
+    m_disable_menu = false;
   }
   return self;
 }
@@ -6533,6 +6660,20 @@ STANDARD_CONTROL_NEEDSDISPLAY_IMPL("combobox")
   if (didBecomeFirstResponder) SendMessage(GetParent((HWND)self),WM_COMMAND,[self tag]|(EN_SETFOCUS<<16),(LPARAM)self);
   return didBecomeFirstResponder;
 }
+
+- (NSMenu *)textView:(NSTextView *)view
+                menu:(NSMenu *)menu
+            forEvent:(NSEvent *)event
+             atIndex:(NSUInteger)charIndex
+{
+  return m_disable_menu ? nil : menu;
+}
+
+- (void)swellDisableContextMenu:(bool)dis
+{
+  m_disable_menu=dis;
+}
+
 @end
 
 
@@ -6927,6 +7068,13 @@ bool SWELL_SetAppAutoHideMenuAndDock(int ah)
     return true;
   }
   return false;
+}
+
+
+void SWELL_DisableContextMenu(HWND hwnd, bool dis)
+{
+  if (WDL_NORMALLY(hwnd && [(id)hwnd respondsToSelector:@selector(swellDisableContextMenu:)]))
+    [(SWELL_TextField*)hwnd swellDisableContextMenu:dis];
 }
 
 #endif

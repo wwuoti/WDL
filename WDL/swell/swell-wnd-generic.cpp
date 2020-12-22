@@ -782,7 +782,10 @@ typedef struct TimerInfoRec
   UINT_PTR timerid;
   HWND hwnd;
   UINT interval;
+
   DWORD lastFire;
+  int refcnt; // 0 normally, 1 if currently processing this timer
+
   TIMERPROC tProc;
   struct TimerInfoRec *_next;
 } TimerInfoRec;
@@ -790,6 +793,25 @@ typedef struct TimerInfoRec
 static TimerInfoRec *m_timer_list;
 static WDL_Mutex m_timermutex;
 static pthread_t m_pmq_mainthread;
+
+static TimerInfoRec *spare_timers;
+static void free_timer(TimerInfoRec *rec)
+{
+  int c = 3; // max spares
+  TimerInfoRec *p = spare_timers;
+  while (p)
+  {
+    if (--c <= 0)
+    {
+      free(rec);
+      return;
+    }
+    p = p->_next;
+  }
+  rec->_next=spare_timers;
+  spare_timers=rec;
+}
+
 
 void SWELL_RunMessageLoop()
 {
@@ -801,9 +823,13 @@ void SWELL_RunMessageLoop()
   TimerInfoRec *rec = m_timer_list;
   while (rec)
   {
-    if ((now-rec->lastFire) >= rec->interval)
+    // rec->lastFire might be after now, if the timer was set from another timer
+    // we should run this timer if rec->lastFire is in the interval
+    // [now-rec->interval-some big range,now-rec->interval]
+    if (WDL_TICKS_IN_RANGE_ENDING_AT(rec->lastFire, now - rec->interval, 100000))
     {
-      rec->lastFire = now;
+      rec->lastFire = GetTickCount();
+      ++rec->refcnt;
 
       HWND h = rec->hwnd;
       TIMERPROC tProc = rec->tProc;
@@ -814,18 +840,17 @@ void SWELL_RunMessageLoop()
       else if (h) SendMessage(h,WM_TIMER,tid,0);
 
       m_timermutex.Enter();
-      TimerInfoRec *tr = m_timer_list;
-      while (tr && tr != rec) tr=tr->_next;
-      if (!tr) 
+
+      if (--rec->refcnt < 0)
       {
-        rec = m_timer_list;  // if no longer in the list, then abort
+        free_timer(rec);
+        rec = m_timer_list;
         continue;
       }
     }
     rec=rec->_next;
   } 
 }
-
 
 UINT_PTR SetTimer(HWND hwnd, UINT_PTR timerid, UINT rate, TIMERPROC tProc)
 {
@@ -851,17 +876,20 @@ UINT_PTR SetTimer(HWND hwnd, UINT_PTR timerid, UINT rate, TIMERPROC tProc)
   bool recAdd=false;
   if (!rec) 
   {
-    rec=(TimerInfoRec*)malloc(sizeof(TimerInfoRec));
+    rec = spare_timers;
+    if (!rec) rec = (TimerInfoRec *)malloc(sizeof(TimerInfoRec));
+    else spare_timers = rec->_next;
+    rec->refcnt = 0;
     recAdd=true;
   }
    
+  if (!hwnd) timerid = (UINT_PTR)rec;
+
   rec->tProc = tProc;
-  rec->timerid=timerid;
-  rec->hwnd=hwnd;
+  rec->timerid = timerid;
+  rec->hwnd = hwnd;
   rec->interval = rate<1?1: rate;
   rec->lastFire = GetTickCount();
-  
-  if (!hwnd) timerid = rec->timerid = (UINT_PTR)rec;
 
   if (recAdd)
   {
@@ -893,7 +921,8 @@ BOOL KillTimer(HWND hwnd, UINT_PTR timerid)
         if (lrec) lrec->_next = nrec;
         else m_timer_list = nrec;
         
-        free(rec);
+        if (--rec->refcnt < 0)
+          free_timer(rec);
 
         rv=TRUE;
         if (timerid!=(UINT_PTR)-1) break;
@@ -1729,6 +1758,7 @@ struct __SWELL_editControlState
     max_height=0;
     max_width=0;
     cache_linelen_strlen = cache_linelen_w = 0;
+    m_disable_contextmenu = false;
   }
   ~__SWELL_editControlState()  {}
 
@@ -1742,6 +1772,8 @@ struct __SWELL_editControlState
   // used for caching line lengths for multiline word-wrapping edit controls
   int cache_linelen_w, cache_linelen_strlen;
   WDL_TypedBuf<int> cache_linelen_bytes;
+
+  bool m_disable_contextmenu;
 
   bool deleteSelection(WDL_FastString *fs);
   int getSelection(WDL_FastString *fs, const char **ptrOut) const;
@@ -2402,6 +2434,8 @@ static LRESULT WINAPI editWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
     break;
     case WM_CONTEXTMENU:
       {
+        if (es->m_disable_contextmenu) break;
+
         HMENU menu=CreatePopupMenu();
         MENUITEMINFO mi={sizeof(mi),MIIM_ID|MIIM_TYPE,MFT_STRING, 0,
               (UINT) 100, NULL,NULL,NULL,0,(char*)"Copy"};
@@ -4661,6 +4695,8 @@ forceMouseMove:
               oldpen = SelectObject(ps.hdc,gridpen);
             }
 
+            HWND par = GetParent(hwnd);
+            NMLVCUSTOMDRAW nmlvcd={ { {hwnd,(UINT_PTR)hwnd->m_id, NM_CUSTOMDRAW}, CDDS_ITEMPREPAINT,ps.hdc, } };
             for (int rowidx = 0; rowidx < nrows && ypos < cr.bottom; rowidx ++)
             {
               const char *str = NULL;
@@ -4682,19 +4718,28 @@ forceMouseMove:
                 }
               }
 
-              if (sel) 
+              COLORREF text_c;
+              if (sel)
               {
                 int c = lvs->m_color_extras[focused ? 1 : 3 ];
-                SetTextColor(ps.hdc, c == -1 ? lvs->m_color_text_sel : c);
+                text_c = c == -1 ? lvs->m_color_text_sel : c;
               }
-              else SetTextColor(ps.hdc, lvs->m_color_text);
+              else
+                text_c = lvs->m_color_text;
 
+              nmlvcd.nmcd.dwItemSpec = (DWORD)rowidx;
               SWELL_ListView_Row *row = lvs->m_data.Get(rowidx);
               int xpos=-xo;
               for (int col = 0; col < nc && xpos < cr.right; col ++)
               {
-                int image_idx = 0;
                 const int col_idx = lvs->GetColumnIndex(col);
+
+                nmlvcd.iSubItem = col_idx;
+                nmlvcd.clrText = text_c;
+                SendMessage(par,WM_NOTIFY,hwnd->m_id&0xffff,(LPARAM)&nmlvcd);
+                SetTextColor(ps.hdc, nmlvcd.clrText);
+
+                int image_idx = 0;
                 if (owner_data)
                 {
                   NMLVDISPINFO nm={{hwnd,hwnd->m_id,LVN_GETDISPINFO},{LVIF_TEXT, rowidx,col_idx, 0,0, buf, sizeof(buf), -1 }};
@@ -4705,7 +4750,7 @@ forceMouseMove:
 
                   }
                   buf[0]=0;
-                  SendMessage(GetParent(hwnd),WM_NOTIFY,hwnd->m_id,(LPARAM)&nm);
+                  SendMessage(par,WM_NOTIFY,hwnd->m_id,(LPARAM)&nm);
                   str=buf;
                   if (!col && has_image)
                   {
@@ -5453,8 +5498,14 @@ static LRESULT treeViewWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPa
             {
               if (GET_X_LPARAM(lParam) < xo + (tvs->m_last_row_height/4)*2+3)
               {
-                hit->m_state ^= TVIS_EXPANDED;
-                InvalidateRect(hwnd,NULL,FALSE);
+                NMTREEVIEW nmhdr={{hwnd,(UINT_PTR)hwnd->m_id,TVN_ITEMEXPANDING},};  // todo: better treeview notifications
+                nmhdr.itemNew.hItem=hit;
+                nmhdr.itemNew.lParam=hit->m_param;
+                if (!SendMessage(GetParent(hwnd),WM_NOTIFY,hwnd->m_id,(LPARAM)&nmhdr))
+                {
+                  hit->m_state ^= TVIS_EXPANDED;
+                  InvalidateRect(hwnd,NULL,FALSE);
+                }
                 return 0;
               }
             }
@@ -7773,6 +7824,17 @@ HTREEITEM TreeView_GetRoot(HWND hwnd)
   return tvs->m_root.m_children.Get(0);
 }
 
+HTREEITEM TreeView_GetParent(HWND hwnd, HTREEITEM item)
+{
+  if (!item) return TreeView_GetRoot(hwnd);
+  treeViewState *tvs = hwnd ? (treeViewState *)hwnd->m_private_data : NULL;
+
+  HTREEITEM par=NULL;
+  int idx=0;
+  if (WDL_NOT_NORMALLY(!tvs || !tvs->findItem(item,&par,&idx))) return NULL;
+  return par;
+}
+
 HTREEITEM TreeView_GetChild(HWND hwnd, HTREEITEM item)
 {
   treeViewState *tvs = hwnd ? (treeViewState *)hwnd->m_private_data : NULL;
@@ -8208,6 +8270,18 @@ int GetClassName(HWND hwnd, char *buf, int bufsz)
   if (WDL_NOT_NORMALLY(!hwnd || !hwnd->m_classname || !buf || bufsz<1)) return 0;
   lstrcpyn_safe(buf,hwnd->m_classname,bufsz);
   return (int)strlen(buf);
+}
+
+void SWELL_DisableContextMenu(HWND hwnd, bool dis)
+{
+  if (WDL_NORMALLY(hwnd))
+  {
+    if (!strcmp(hwnd->m_classname,"Edit"))
+    {
+      __SWELL_editControlState *es = (__SWELL_editControlState*)hwnd->m_private_data;
+      if (es) es->m_disable_contextmenu = dis;
+    }
+  }
 }
 
 #ifdef _DEBUG
