@@ -52,6 +52,7 @@ extern "C" {
   #endif
 #endif
 
+//TODO: solve importing these for briding windows on wayland
 #ifdef GDK_WINDOWING_X11
     #include <X11/Xatom.h>
 #endif 
@@ -2189,17 +2190,22 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, RECT *r)
   Window w = 0;
   GdkWindow *gdkw = NULL;
   GdkDisplay *gdkdisp = gdk_window_get_display(ospar);
-#ifdef GDK_WINDOWING_X11
-  if (GDK_IS_X11_DISPLAY (gdkdisp))
-  {
+//#ifdef GDK_WINDOWING_X11
+//  if (GDK_IS_X11_DISPLAY (gdkdisp))
+//  {
     disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
     w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+    //Display* x_display = XOpenDisplay(NULL);
+    //int screen_num = DefaultScreen(x_display);
+    //w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
     gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+    //gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_x11_lookup_xdisplay(x_display),w) : NULL;
+
     if (!w){
         printf("w is null \n");
     }
-  }
-#endif
+//  }
+//#endif
 
 #ifdef GDK_WINDOWING_WAYLAND
   if (GDK_IS_WAYLAND_DISPLAY (gdkdisp))
