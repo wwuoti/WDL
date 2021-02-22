@@ -298,6 +298,7 @@ public:
   int m_kb_queue[64];
   unsigned char m_kb_queue_valid;
   unsigned char m_kb_queue_pos;
+  HCURSOR m_cursor;
   int m_cursor_resid;
 #ifdef EEL_LICE_LOADTHEMECURSOR
   char m_cursor_name[128];
@@ -324,6 +325,7 @@ eel_lice_state::eel_lice_state(NSEEL_VMCTX vm, void *ctx, int image_slots, int f
   memset(hwnd_standalone_kb_state,0,sizeof(hwnd_standalone_kb_state));
   m_kb_queue_valid=0;
   m_cursor_resid=0;
+  m_cursor = NULL;
 #ifndef EEL_LICE_STANDALONE_NOINITQUIT
   memset(&m_last_undocked_r,0,sizeof(m_last_undocked_r));
 #endif
@@ -1025,8 +1027,8 @@ EEL_F eel_lice_state::gfx_setimgdim(int img, EEL_F *w, EEL_F *h)
   int use_w = (int)*w;
   int use_h = (int)*h;
   if (use_w<1 || use_h < 1) use_w=use_h=0;
-  if (use_w > 2048) use_w=2048;
-  if (use_h > 2048) use_h=2048;
+  if (use_w > 8192) use_w=8192;
+  if (use_h > 8192) use_h=8192;
   
   LICE_IBitmap *bm=NULL;
   if (img >= 0 && img < m_gfx_images.GetSize()) 
@@ -1169,7 +1171,19 @@ EEL_F eel_lice_state::gfx_setfont(void *opaque, int np, EEL_F **parms)
         if (!s->font) s->font=LICE_CreateFont();
         if (s->font)
         {
-          HFONT hf=CreateFont(sz,0,0,0,(fontflag&1) ? FW_BOLD : FW_NORMAL,!!(fontflag&2),!!(fontflag&4),FALSE,ANSI_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,DEFAULT_QUALITY,DEFAULT_PITCH,s->last_fontname);
+          const int fw = (fontflag&1) ? FW_BOLD : FW_NORMAL;
+          HFONT hf=NULL;
+#if defined(_WIN32) && !defined(WDL_NO_SUPPORT_UTF8)
+          WCHAR wf[256];
+          if (WDL_DetectUTF8(s->last_fontname)>0 &&
+              GetVersion()<0x80000000 &&
+              MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s->last_fontname,-1,wf,256))
+          {
+            hf = CreateFontW(sz,0,0,0,fw,!!(fontflag&2),!!(fontflag&4),FALSE,ANSI_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,DEFAULT_QUALITY,DEFAULT_PITCH,wf);
+          }
+#endif
+          if (!hf) hf = CreateFont(sz,0,0,0,fw,!!(fontflag&2),!!(fontflag&4),FALSE,ANSI_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,DEFAULT_QUALITY,DEFAULT_PITCH,s->last_fontname);
+
           if (!hf)
           {
             s->use_fonth=0; // disable this font
@@ -1189,7 +1203,17 @@ EEL_F eel_lice_state::gfx_setfont(void *opaque, int np, EEL_F **parms)
               {
                 oldFont = SelectObject(hdc,hf);
                 GetTextMetrics(hdc,&tm);
-                GetTextFace(hdc, sizeof(s->actual_fontname), s->actual_fontname);
+
+#if defined(_WIN32) && !defined(WDL_NO_SUPPORT_UTF8)
+                if (GetVersion()<0x80000000 &&
+                    GetTextFaceW(hdc,sizeof(wf)/sizeof(wf[0]),wf) &&
+                    WideCharToMultiByte(CP_UTF8,0,wf,-1,s->actual_fontname,sizeof(s->actual_fontname),NULL,NULL))
+                {
+                  s->actual_fontname[sizeof(s->actual_fontname)-1]=0;
+                }
+                else
+#endif
+                  GetTextFace(hdc, sizeof(s->actual_fontname), s->actual_fontname);
                 SelectObject(hdc,oldFont);
               }
             }
@@ -1603,16 +1627,53 @@ EEL_F eel_lice_state::gfx_setcursor(void* opaque, EEL_F** parms, int nparms)
 {
   if (!hwnd_standalone) return 0.0;
 
-  m_cursor_resid=(int)parms[0][0];
-
-#ifdef EEL_LICE_LOADTHEMECURSOR
-  m_cursor_name[0]=0;
-  if (nparms > 1)
+  bool chg = false;
+  const int nc = (int)parms[0][0];
+  if (m_cursor_resid != nc)
   {
-    const char* p=EEL_STRING_GET_FOR_INDEX(parms[1][0], NULL);
-    if (p && p[0]) lstrcpyn(m_cursor_name, p, sizeof(m_cursor_name));
+    m_cursor_resid = nc;
+    chg = true;
+  }
+
+  const char *p = NULL;
+#ifdef EEL_LICE_LOADTHEMECURSOR
+  if (nparms > 1) p=EEL_STRING_GET_FOR_INDEX(parms[1][0], NULL);
+
+  if (strncmp(p?p:"",m_cursor_name,sizeof(m_cursor_name)-1))
+  {
+    lstrcpyn(m_cursor_name, p?p:"", sizeof(m_cursor_name));
+    chg = true;
   }
 #endif
+
+  if (chg)
+  {
+    m_cursor = NULL;
+    if (m_cursor_resid > 0)
+    {
+      if (!p || !*p) m_cursor = LoadCursor(NULL, MAKEINTRESOURCE(m_cursor_resid));
+#ifdef EEL_LICE_LOADTHEMECURSOR
+      else m_cursor = EEL_LICE_LOADTHEMECURSOR(m_cursor_resid, p);
+#endif
+    }
+
+    bool do_set = GetCapture() == hwnd_standalone;
+    if (!do_set && GetFocus() == hwnd_standalone)
+    {
+      POINT pt;
+      RECT r;
+      GetCursorPos(&pt);
+      ScreenToClient(hwnd_standalone,&pt);
+      GetClientRect(hwnd_standalone,&r);
+      do_set = PtInRect(&r,pt);
+    }
+
+    if (do_set)
+    {
+      SetCursor(m_cursor ? m_cursor : LoadCursor(NULL,IDC_ARROW));
+    }
+  }
+
   return 1.0;
 }
 
@@ -2117,7 +2178,9 @@ static LRESULT WINAPI eel_lice_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
 extern "C" 
 {
   void *objc_getClass(const char *p);
+#ifndef _OBJC_OBJC_H_
   void *sel_getUid(const char *p);
+#endif
   void objc_msgSend(void);
 };
 #endif
@@ -2209,9 +2272,9 @@ static EEL_F NSEEL_CGEN_CALL _gfx_init(void *opaque, INT_PTR np, EEL_F **parms)
     #endif
 
     if (sug_w < 16) sug_w=16;
-    else if (sug_w > 2048) sug_w=2048;
+    else if (sug_w > 8192) sug_w=8192;
     if (sug_h < 16) sug_h=16;
-    else if (sug_h > 1600) sug_h=1600;
+    else if (sug_h > 8192) sug_h=8192;
 
     if (!ctx->hwnd_standalone)
     {
@@ -2422,21 +2485,16 @@ LRESULT WINAPI eel_lice_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     case WM_SETCURSOR:
     {
       eel_lice_state *ctx=(eel_lice_state*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-      if (ctx && ctx->m_cursor_resid > 0)
+      if (ctx && ctx->m_cursor)
       {
         POINT p;
         GetCursorPos(&p);
         ScreenToClient(hwnd, &p);
         RECT r;
         GetClientRect(hwnd, &r);
-        if (p.x >= 0 && p.x < r.right && p.y >= 0 && p.y < r.bottom)
+        if (PtInRect(&r,p))
         {
-#ifdef EEL_LICE_LOADTHEMECURSOR
-          if (ctx->m_cursor_name[0]) 
-            SetCursor(EEL_LICE_LOADTHEMECURSOR(ctx->m_cursor_resid, ctx->m_cursor_name));
-          else
-#endif
-            SetCursor(LoadCursor(NULL, MAKEINTRESOURCE(ctx->m_cursor_resid)));
+          SetCursor(ctx->m_cursor);
           return TRUE;
         }
       }
@@ -2845,17 +2903,26 @@ static const char *eel_lice_function_reference =
 #endif
   "gfx_aaaaa\t\t"
   "The following global variables are special and will be used by the graphics system:\n\n\3"
-  "\4gfx_r, gfx_g, gfx_b, gfx_a2 - These represent the current red, green, blue, and alpha components used by drawing operations (0.0..1.0). gfx_a2 is the value written to the alpha channel when writing solid colors (normally ignored but useful when creating transparent images)\n"
-  "\4gfx_a, gfx_mode - Alpha and blend mode for drawing. Set mode to 0 for default options. Add 1.0 for additive blend mode (if you wish to do subtractive, set gfx_a to negative and use gfx_mode as additive). Add 2.0 to disable source alpha for gfx_blit(). Add 4.0 to disable filtering for gfx_blit(). \n"
-  "\4gfx_w, gfx_h - These are set to the current width and height of the UI framebuffer. \n"
-  "\4gfx_x, gfx_y - These set the \"current\" graphics position in x,y. You can set these yourselves, and many of the drawing functions update them as well. \n"
-  "\4gfx_clear - If set to a value greater than -1.0, this will result in the framebuffer being cleared to that color. the color for this one is packed RGB (0..255), i.e. red+green*256+blue*65536. The default is 0 (black). \n"
-  "\4gfx_dest - Defaults to -1, set to 0.." EEL_LICE_DOC_MAXHANDLE " to have drawing operations go to an offscreen buffer (or loaded image).\n"
-  "\4gfx_texth - Set to the height of a line of text in the current font. Do not modify this variable.\n"
-  "\4gfx_ext_retina - If set to 1.0 on initialization, will be updated to 2.0 if high resolution display is supported, and if so gfx_w/gfx_h/etc will be doubled.\n"
-  "\4mouse_x, mouse_y - mouse_x and mouse_y are set to the coordinates of the mouse relative to the graphics window.\n"
-  "\4mouse_wheel, mouse_hwheel - mouse wheel (and horizontal wheel) positions. These will change typically by 120 or a multiple thereof, the caller should clear the state to 0 after reading it."
-  "\4mouse_cap is a bitfield of mouse and keyboard modifier state.\3"
+  // we depend on the formatting here -- following gfx_aaaaa, search for \4[gfx_*|mouse_*]- for syntax highlight etc
+  "\4gfx_r - current red component (0..1) used by drawing operations.\n"
+  "\4gfx_g - current green component (0..1) used by drawing operations.\n"
+  "\4gfx_b - current blue component (0..1) used by drawing operations.\n"
+  "\4gfx_a2 - current alpha component (0..1) used by drawing operations when writing solid colors (normally ignored but useful when creating transparent images).\n"
+  "\4gfx_a - alpha for drawing (1=normal).\n"
+  "\4gfx_mode - blend mode for drawing. Set mode to 0 for default options. Add 1.0 for additive blend mode (if you wish to do subtractive, set gfx_a to negative and use gfx_mode as additive). Add 2.0 to disable source alpha for gfx_blit(). Add 4.0 to disable filtering for gfx_blit(). \n"
+  "\4gfx_w - width of the UI framebuffer. \n"
+  "\4gfx_h - height of the UI framebuffer. \n"
+  "\4gfx_x - current graphics position X. Some drawing functions use as start position and update. \n"
+  "\4gfx_y - current graphics position Y. Some drawing functions use as start position and update. \n"
+  "\4gfx_clear - if greater than -1.0, framebuffer will be cleared to that color. the color for this one is packed RGB (0..255), i.e. red+green*256+blue*65536. The default is 0 (black). \n"
+  "\4gfx_dest - destination for drawing operations, -1 is main framebuffer, set to 0.." EEL_LICE_DOC_MAXHANDLE " to have drawing operations go to an offscreen buffer (or loaded image).\n"
+  "\4gfx_texth - the (READ-ONLY) height of a line of text in the current font. Do not modify this variable.\n"
+  "\4gfx_ext_retina - to support hidpi/retina, callers should set to 1.0 on initialization, will be updated to 2.0 if high resolution display is supported, and if so gfx_w/gfx_h/etc will be doubled.\n"
+  "\4mouse_x - current X coordinate of the mouse relative to the graphics window.\n"
+  "\4mouse_y - current Y coordinate of the mouse relative to the graphics window.\n"
+  "\4mouse_wheel - wheel position, will change typically by 120 or a multiple thereof, the caller should clear the state to 0 after reading it.\n"
+  "\4mouse_hwheel - horizontal wheel positions, will change typically by 120 or a multiple thereof, the caller should clear the state to 0 after reading it.\n"
+  "\4mouse_cap - a bitfield of mouse and keyboard modifier state:\3"
     "\4" "1: left mouse button\n"
     "\4" "2: right mouse button\n"
 #ifdef __APPLE__
@@ -2927,7 +2994,7 @@ static const char *eel_lice_function_reference =
                    "srcx/srcy/srcw/srch specify the source rectangle (if omitted srcw/srch default to image size), destx/desty/destw/desth specify dest rectangle (if not specified, these will default to reasonable defaults -- destw/desth default to srcw/srch * scale). \0"
   "gfx_blitext\tsource,coordinatelist,rotation\tDeprecated, use gfx_blit instead.\0"
   "gfx_getimgdim\timage,w,h\tRetreives the dimensions of image (representing a filename: index number) into w and h. Sets these values to 0 if an image failed loading (or if the filename index is invalid).\0"
-  "gfx_setimgdim\timage,w,h\tResize image referenced by index 0.." EEL_LICE_DOC_MAXHANDLE ", width and height must be 0-2048. The contents of the image will be undefined after the resize.\0"
+  "gfx_setimgdim\timage,w,h\tResize image referenced by index 0.." EEL_LICE_DOC_MAXHANDLE ", width and height must be 0-8192. The contents of the image will be undefined after the resize.\0"
   "gfx_loadimg\timage,\"filename\"\tLoad image from filename into slot 0.." EEL_LICE_DOC_MAXHANDLE " specified by image. Returns the image index if success, otherwise -1 if failure. The image will be resized to the dimensions of the image file. \0"
   "gfx_gradrect\tx,y,w,h, r,g,b,a[, drdx, dgdx, dbdx, dadx, drdy, dgdy, dbdy, dady]\tFills a gradient rectangle with the color and alpha specified. drdx-dadx reflect the adjustment (per-pixel) applied for each pixel moved to the right, drdy-dady are the adjustment applied for each pixel moved toward the bottom. Normally drdx=adjustamount/w, drdy=adjustamount/h, etc.\0"
   "gfx_muladdrect\tx,y,w,h,mul_r,mul_g,mul_b[,mul_a,add_r,add_g,add_b,add_a]\tMultiplies each pixel by mul_* and adds add_*, and updates in-place. Useful for changing brightness/contrast, or other effects.\0"

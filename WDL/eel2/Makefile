@@ -9,6 +9,8 @@ else
 CFLAGS += -DNDEBUG -O
 endif
 
+CFLAGS += -D_FILE_OFFSET_BITS=64
+
 OBJS=nseel-caltab.o nseel-compiler.o nseel-eval.o nseel-lextab.o nseel-ram.o nseel-yylex.o nseel-cfunc.o fft.o
 
 OBJS2=
@@ -27,11 +29,15 @@ ifeq ($(UNAME_S),Darwin)
   CFLAGS += -arch $(ARCH)
 endif
 
-ifneq ($(filter arm%,$(ARCH)),)
-  CFLAGS += -fsigned-char -mfpu=vfp -march=armv6t2 -marm
-endif
-ifeq ($(ARCH),aarch64)
+ifeq ($(ARCH),arm64)
   CFLAGS += -fsigned-char
+else
+  ifneq ($(filter arm%,$(ARCH)),)
+    CFLAGS += -fsigned-char -mfpu=vfp -march=armv6t2 -marm
+  endif
+  ifeq ($(ARCH),aarch64)
+    CFLAGS += -fsigned-char
+  endif
 endif
 
 ifndef ALLOW_WARNINGS
@@ -90,8 +96,8 @@ ifndef NO_GFX
       LFLAGS += $(shell pkg-config --libs gdk-3.0) -lX11 -lXi
     endif
     ifndef NOFREETYPE
-      CFLAGS += -DSWELL_FREETYPE $(shell freetype-config --cflags)
-      LFLAGS += $(shell freetype-config --libs)
+      CFLAGS += -DSWELL_FREETYPE $(shell pkg-config --cflags freetype2)
+      LFLAGS += $(shell pkg-config --libs freetype2)
     endif
 
     OBJS += swell-wnd-generic.o swell-gdi-lice.o swell.o swell-misc-generic.o \

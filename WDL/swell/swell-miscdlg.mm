@@ -399,8 +399,11 @@ bool BrowseForDirectory(const char *text, const char *initialdir, char *fn, int 
 		
   NSString *aFile = [filesToOpen objectAtIndex:0];
   if (!aFile) return 0;
-  SWELL_CFStringToCString(aFile,fn,fnsize);
-  fn[fnsize-1]=0;
+  if (fn && fnsize>0)
+  {
+    SWELL_CFStringToCString(aFile,fn,fnsize);
+    fn[fnsize-1]=0;
+  }
   return 1;
 }
 
@@ -574,6 +577,15 @@ int MessageBox(HWND hwndParent, const char *text, const char *caption, int type)
     b2 = b3 ? b3 : tmp;
     if (b3) b3=tmp;
   }
+
+  if (b2 && b3)
+  {
+    // NSRunAlertPanel ordering meh
+    const int tmp = b3;
+    b3 = b2;
+    b2 = tmp;
+  }
+
   NSInteger ret = NSRunAlertPanel(title,@"%@",mbidtostr(b1),mbidtostr(b2),mbidtostr(b3),text2);
 
   [text2 release];
