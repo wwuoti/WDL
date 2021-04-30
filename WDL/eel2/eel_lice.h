@@ -298,6 +298,7 @@ public:
   int m_kb_queue[64];
   unsigned char m_kb_queue_valid;
   unsigned char m_kb_queue_pos;
+  HCURSOR m_cursor;
   int m_cursor_resid;
 #ifdef EEL_LICE_LOADTHEMECURSOR
   char m_cursor_name[128];
@@ -324,6 +325,7 @@ eel_lice_state::eel_lice_state(NSEEL_VMCTX vm, void *ctx, int image_slots, int f
   memset(hwnd_standalone_kb_state,0,sizeof(hwnd_standalone_kb_state));
   m_kb_queue_valid=0;
   m_cursor_resid=0;
+  m_cursor = NULL;
 #ifndef EEL_LICE_STANDALONE_NOINITQUIT
   memset(&m_last_undocked_r,0,sizeof(m_last_undocked_r));
 #endif
@@ -1625,16 +1627,53 @@ EEL_F eel_lice_state::gfx_setcursor(void* opaque, EEL_F** parms, int nparms)
 {
   if (!hwnd_standalone) return 0.0;
 
-  m_cursor_resid=(int)parms[0][0];
-
-#ifdef EEL_LICE_LOADTHEMECURSOR
-  m_cursor_name[0]=0;
-  if (nparms > 1)
+  bool chg = false;
+  const int nc = (int)parms[0][0];
+  if (m_cursor_resid != nc)
   {
-    const char* p=EEL_STRING_GET_FOR_INDEX(parms[1][0], NULL);
-    if (p && p[0]) lstrcpyn(m_cursor_name, p, sizeof(m_cursor_name));
+    m_cursor_resid = nc;
+    chg = true;
+  }
+
+  const char *p = NULL;
+#ifdef EEL_LICE_LOADTHEMECURSOR
+  if (nparms > 1) p=EEL_STRING_GET_FOR_INDEX(parms[1][0], NULL);
+
+  if (strncmp(p?p:"",m_cursor_name,sizeof(m_cursor_name)-1))
+  {
+    lstrcpyn(m_cursor_name, p?p:"", sizeof(m_cursor_name));
+    chg = true;
   }
 #endif
+
+  if (chg)
+  {
+    m_cursor = NULL;
+    if (m_cursor_resid > 0)
+    {
+      if (!p || !*p) m_cursor = LoadCursor(NULL, MAKEINTRESOURCE(m_cursor_resid));
+#ifdef EEL_LICE_LOADTHEMECURSOR
+      else m_cursor = EEL_LICE_LOADTHEMECURSOR(m_cursor_resid, p);
+#endif
+    }
+
+    bool do_set = GetCapture() == hwnd_standalone;
+    if (!do_set && GetFocus() == hwnd_standalone)
+    {
+      POINT pt;
+      RECT r;
+      GetCursorPos(&pt);
+      ScreenToClient(hwnd_standalone,&pt);
+      GetClientRect(hwnd_standalone,&r);
+      do_set = PtInRect(&r,pt);
+    }
+
+    if (do_set)
+    {
+      SetCursor(m_cursor ? m_cursor : LoadCursor(NULL,IDC_ARROW));
+    }
+  }
+
   return 1.0;
 }
 
@@ -2446,21 +2485,16 @@ LRESULT WINAPI eel_lice_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
     case WM_SETCURSOR:
     {
       eel_lice_state *ctx=(eel_lice_state*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-      if (ctx && ctx->m_cursor_resid > 0)
+      if (ctx && ctx->m_cursor)
       {
         POINT p;
         GetCursorPos(&p);
         ScreenToClient(hwnd, &p);
         RECT r;
         GetClientRect(hwnd, &r);
-        if (p.x >= 0 && p.x < r.right && p.y >= 0 && p.y < r.bottom)
+        if (PtInRect(&r,p))
         {
-#ifdef EEL_LICE_LOADTHEMECURSOR
-          if (ctx->m_cursor_name[0]) 
-            SetCursor(EEL_LICE_LOADTHEMECURSOR(ctx->m_cursor_resid, ctx->m_cursor_name));
-          else
-#endif
-            SetCursor(LoadCursor(NULL, MAKEINTRESOURCE(ctx->m_cursor_resid)));
+          SetCursor(ctx->m_cursor);
           return TRUE;
         }
       }
@@ -2869,17 +2903,26 @@ static const char *eel_lice_function_reference =
 #endif
   "gfx_aaaaa\t\t"
   "The following global variables are special and will be used by the graphics system:\n\n\3"
-  "\4gfx_r, gfx_g, gfx_b, gfx_a2 - These represent the current red, green, blue, and alpha components used by drawing operations (0.0..1.0). gfx_a2 is the value written to the alpha channel when writing solid colors (normally ignored but useful when creating transparent images)\n"
-  "\4gfx_a, gfx_mode - Alpha and blend mode for drawing. Set mode to 0 for default options. Add 1.0 for additive blend mode (if you wish to do subtractive, set gfx_a to negative and use gfx_mode as additive). Add 2.0 to disable source alpha for gfx_blit(). Add 4.0 to disable filtering for gfx_blit(). \n"
-  "\4gfx_w, gfx_h - These are set to the current width and height of the UI framebuffer. \n"
-  "\4gfx_x, gfx_y - These set the \"current\" graphics position in x,y. You can set these yourselves, and many of the drawing functions update them as well. \n"
-  "\4gfx_clear - If set to a value greater than -1.0, this will result in the framebuffer being cleared to that color. the color for this one is packed RGB (0..255), i.e. red+green*256+blue*65536. The default is 0 (black). \n"
-  "\4gfx_dest - Defaults to -1, set to 0.." EEL_LICE_DOC_MAXHANDLE " to have drawing operations go to an offscreen buffer (or loaded image).\n"
-  "\4gfx_texth - Set to the height of a line of text in the current font. Do not modify this variable.\n"
-  "\4gfx_ext_retina - If set to 1.0 on initialization, will be updated to 2.0 if high resolution display is supported, and if so gfx_w/gfx_h/etc will be doubled.\n"
-  "\4mouse_x, mouse_y - mouse_x and mouse_y are set to the coordinates of the mouse relative to the graphics window.\n"
-  "\4mouse_wheel, mouse_hwheel - mouse wheel (and horizontal wheel) positions. These will change typically by 120 or a multiple thereof, the caller should clear the state to 0 after reading it."
-  "\4mouse_cap is a bitfield of mouse and keyboard modifier state.\3"
+  // we depend on the formatting here -- following gfx_aaaaa, search for \4[gfx_*|mouse_*]- for syntax highlight etc
+  "\4gfx_r - current red component (0..1) used by drawing operations.\n"
+  "\4gfx_g - current green component (0..1) used by drawing operations.\n"
+  "\4gfx_b - current blue component (0..1) used by drawing operations.\n"
+  "\4gfx_a2 - current alpha component (0..1) used by drawing operations when writing solid colors (normally ignored but useful when creating transparent images).\n"
+  "\4gfx_a - alpha for drawing (1=normal).\n"
+  "\4gfx_mode - blend mode for drawing. Set mode to 0 for default options. Add 1.0 for additive blend mode (if you wish to do subtractive, set gfx_a to negative and use gfx_mode as additive). Add 2.0 to disable source alpha for gfx_blit(). Add 4.0 to disable filtering for gfx_blit(). \n"
+  "\4gfx_w - width of the UI framebuffer. \n"
+  "\4gfx_h - height of the UI framebuffer. \n"
+  "\4gfx_x - current graphics position X. Some drawing functions use as start position and update. \n"
+  "\4gfx_y - current graphics position Y. Some drawing functions use as start position and update. \n"
+  "\4gfx_clear - if greater than -1.0, framebuffer will be cleared to that color. the color for this one is packed RGB (0..255), i.e. red+green*256+blue*65536. The default is 0 (black). \n"
+  "\4gfx_dest - destination for drawing operations, -1 is main framebuffer, set to 0.." EEL_LICE_DOC_MAXHANDLE " to have drawing operations go to an offscreen buffer (or loaded image).\n"
+  "\4gfx_texth - the (READ-ONLY) height of a line of text in the current font. Do not modify this variable.\n"
+  "\4gfx_ext_retina - to support hidpi/retina, callers should set to 1.0 on initialization, will be updated to 2.0 if high resolution display is supported, and if so gfx_w/gfx_h/etc will be doubled.\n"
+  "\4mouse_x - current X coordinate of the mouse relative to the graphics window.\n"
+  "\4mouse_y - current Y coordinate of the mouse relative to the graphics window.\n"
+  "\4mouse_wheel - wheel position, will change typically by 120 or a multiple thereof, the caller should clear the state to 0 after reading it.\n"
+  "\4mouse_hwheel - horizontal wheel positions, will change typically by 120 or a multiple thereof, the caller should clear the state to 0 after reading it.\n"
+  "\4mouse_cap - a bitfield of mouse and keyboard modifier state:\3"
     "\4" "1: left mouse button\n"
     "\4" "2: right mouse button\n"
 #ifdef __APPLE__

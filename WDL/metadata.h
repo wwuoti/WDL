@@ -1,6 +1,7 @@
 #ifndef _WDL_METADATA_H_
 #define _WDL_METADATA_H_
 
+#include <math.h>
 #include "wdlstring.h"
 #include "xmlparse.h"
 #include "fileread.h"
@@ -21,9 +22,9 @@ char *tag_strndup(const char *src, int len)
   return dest;
 }
 
-WDL_INT64 ParseInt64(const char *val)
+WDL_UINT64 ParseUInt64(const char *val)
 {
-  WDL_INT64 i=0;
+  WDL_UINT64 i=0;
   if (val)
   {
     const char *p=val;
@@ -171,7 +172,7 @@ void UnpackXMPDescription(const char *curkey, wdl_xml_element *elem,
     if (tval >= 0.0)
     {
       char buf[512];
-      snprintf(buf, sizeof(buf), "%lld", (WDL_INT64)(tval*1000.0));
+      snprintf(buf, sizeof(buf), "%.0f", floor(tval*1000.0));
       metadata->Insert("XMP:dm/relativeTimestamp", strdup(buf));
     }
     return;
@@ -773,7 +774,7 @@ const char *EnumMetadataKeyFromMexKey(const char *mexkey, int idx)
   if (!mexkey || !mexkey[0] || idx < 0) return NULL;
 
   // TO_DO_IF_METADATA_UPDATE
-  // "TITLE", "ARTIST", "ALBUM", "YEAR", "GENRE", "COMMENT", "DESC", "BPM", "KEY", "DB_CUSTOM"
+  // "TITLE", "ARTIST", "ALBUM", "YEAR", "GENRE", "COMMENT", "DESC", "BPM", "KEY", "DB_CUSTOM", "TRACKNUMBER"
 
   if (!strcmp(mexkey, "DATE")) mexkey="YEAR";
   else if (!strcmp(mexkey, "REAPER")) mexkey="DB_CUSTOM";
@@ -787,76 +788,76 @@ const char *EnumMetadataKeyFromMexKey(const char *mexkey, int idx)
   // general priority order here:
   // BWF
   // INFO
-  // IXML
-  // XMP
   // ID3
   // APE
   // VORBIS
   // CART
+  // IXML
+  // XMP
   // IFF
   // REX
 
   static const char *TITLE_KEYS[]=
   {
     "INFO:INAM",
-    "IXML:PROJECT",
-    "XMP:dc/title",
     "ID3:TIT2",
     "APE:Title",
     "VORBIS:TITLE",
     "CART:Title",
+    "IXML:PROJECT",
+    "XMP:dc/title",
     "IFF:NAME",
     "REX:Name",
   };
   static const char *ARTIST_KEYS[]=
   {
     "INFO:IART",
-    "XMP:dm/artist",
     "ID3:TPE1",
     "APE:Artist",
     "VORBIS:ARTIST",
     "CART:Artist",
+    "XMP:dm/artist",
     "IFF:AUTH",
   };
   static const char *ALBUM_KEYS[]=
   {
     "INFO:IALB",
     "INFO:IPRD",
-    "XMP:dm/album",
     "ID3:TALB",
     "APE:Album",
     "VORBIS:ALBUM",
+    "XMP:dm/album",
   };
   static const char *YEAR_KEYS[]= // really DATE
   {
     "BWF:OriginationDate",
     "INFO:ICRD",
-    "XMP:dc/date",
     "ID3:TYER",
     "ID3:TDRC",
     "APE:Year",
     "APE:Record Date",
     "VORBIS:DATE",
     "CART:StartDate",
+    "XMP:dc/date",
   };
   static const char *GENRE_KEYS[]=
   {
     "INFO:IGNR",
-    "XMP:dm/genre",
     "ID3:TCON",
     "APE:Genre",
     "VORBIS:GENRE",
     "CART:Category",
+    "XMP:dm/genre",
   };
   static const char *COMMENT_KEYS[]=
   {
     "INFO:ICMT",
-    "IXML:NOTE",
-    "XMP:dm/logComment",
     "ID3:COMM",
     "APE:Comment",
     "VORBIS:COMMENT",
     "CART:TagText",
+    "IXML:NOTE",
+    "XMP:dm/logComment",
     "REX:FreeText",
   };
   static const char *DESC_KEYS[]=
@@ -864,32 +865,42 @@ const char *EnumMetadataKeyFromMexKey(const char *mexkey, int idx)
     "BWF:Description",
     "INFO:ISBJ",
     "INFO:IKEY",
-    "XMP:dc/description",
     "ID3:TIT3",
     "APE:Subtitle",
     "VORBIS:DESCRIPTION",
+    "XMP:dc/description",
     "IFF:ANNO",
   };
   static const char *BPM_KEYS[]=
   {
-    "XMP:dm/tempo",
     "ID3:TBPM",
     "APE:BPM",
     "VORBIS:BPM",
+    "XMP:dm/tempo",
   };
   static const char *KEY_KEYS[]=
   {
-    "XMP:dm/key",
     "ID3:TKEY",
     "APE:Key",
     "VORBIS:KEY",
+    "XMP:dm/key",
   };
   static const char *DB_CUSTOM_KEYS[]=
   {
-    "IXML:USER:REAPER",
     "ID3:TXXX:REAPER",
     "APE:REAPER",
     "VORBIS:REAPER",
+    "IXML:USER:REAPER",
+  };
+  static const char *TRACKNUMBER_KEYS[]=
+  {
+    "INFO:TRCK",
+    "ID3:TRCK",
+    "APE:Track",
+    "VORBIS:TRACKNUMBER",
+    "CART:CutID",
+    // "IXML:TRACK",
+    "XMP:dm/trackNumber",
   };
 
 #define DO_MEXKEY_MAP(K) if (!strcmp(mexkey, #K)) \
@@ -898,6 +909,7 @@ const char *EnumMetadataKeyFromMexKey(const char *mexkey, int idx)
   DO_MEXKEY_MAP(TITLE);
   DO_MEXKEY_MAP(ARTIST);
   DO_MEXKEY_MAP(ALBUM);
+  DO_MEXKEY_MAP(TRACKNUMBER);
   DO_MEXKEY_MAP(YEAR);
   DO_MEXKEY_MAP(GENRE);
   DO_MEXKEY_MAP(COMMENT);
@@ -951,13 +963,13 @@ void WriteMetadataPrefPos(double prefpos, int srate,
     char buf[128];
     if (srate > 0.0)
     {
-      snprintf(buf, sizeof(buf), "%lld", (WDL_INT64)(prefpos*(double)srate));
+      snprintf(buf, sizeof(buf), "%.0f", floor(prefpos*(double)srate));
       metadata->Insert("BWF:TimeReference", strdup(buf));
       // BWF:TimeReference causes IXML:BEXT element to be written as well
       metadata->Insert("ID3:TXXX:TIME_REFERENCE", strdup(buf));
       metadata->Insert("VORBIS:TIME_REFERENCE", strdup(buf));
     }
-    snprintf(buf, sizeof(buf), "%lld", (WDL_INT64)(prefpos*1000.0));
+    snprintf(buf, sizeof(buf), "%.0f", floor(prefpos*1000.0));
     metadata->Insert("XMP:dm/relativeTimestamp", strdup(buf));
   }
 }
@@ -975,7 +987,7 @@ void AddMexMetadata(WDL_StringKeyedArray<char*> *mex_metadata,
 
     if (!strcmp(mexkey, "PREFPOS"))
     {
-      int ms = val && val[0] ? ParseInt64(val) : 0;
+      WDL_UINT64 ms = val && val[0] ? ParseUInt64(val) : 0;
       WriteMetadataPrefPos((double)ms/1000.0, srate, metadata);
       // caller may still have to do stuff if prefpos is represented
       // in some other way outside the metadata we handle, like wavpack
@@ -1001,10 +1013,11 @@ void DumpMetadata(WDL_FastString *str, WDL_StringKeyedArray<char*> *metadata)
   scheme[0]=0;
 
   // TO_DO_IF_METADATA_UPDATE
+  // note these are for display, so not necessarily in the same order as elsewhere
   static const char *mexkey[]=
-    {"TITLE", "ARTIST", "ALBUM", "YEAR", "GENRE", "COMMENT", "DESC", "BPM", "KEY", "DB_CUSTOM"};
+    {"TITLE", "ARTIST", "ALBUM", "TRACKNUMBER", "YEAR", "GENRE", "COMMENT", "DESC", "BPM", "KEY", "DB_CUSTOM"};
   static const char *dispkey[]=
-    {"Title", "Artist", "Album", "Date", "Genre", "Comment", "Description", "BPM", "Key", "Media Explorer Tags"};
+    {"Title", "Artist", "Album", "Track", "Date", "Genre", "Comment", "Description", "BPM", "Key", "Media Explorer Tags"};
   char buf[2048];
   for (int j=0; j < sizeof(mexkey)/sizeof(mexkey[0]); ++j)
   {
@@ -1267,6 +1280,7 @@ void AddMexID3Raw(WDL_StringKeyedArray<char*> *metadata,
     "ID3:TIT2",
     "ID3:TPE1",
     "ID3:TALB",
+    "ID3:TRCK",
     "ID3:TYER",
     "ID3:TDRC",
     "ID3:TCON",
@@ -1427,37 +1441,37 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool wa
   int i;
   for (i=0; i < metadata->GetSize(); ++i)
   {
-    const char *id;
-    const char *val=metadata->Enumerate(i, &id);
-    if (strlen(id) < 8 || strncmp(id, "ID3:", 4) || !val) continue;
-    id += 4;
-    if (!strncmp(id, "TXXX", 4))
+    const char *key;
+    const char *val=metadata->Enumerate(i, &key);
+    if (strlen(key) < 8 || strncmp(key, "ID3:", 4) || !val) continue;
+    key += 4;
+    if (!strncmp(key, "TXXX", 4))
     {
       const char *k, *v;
       int klen, vlen;
-      ParseUserDefMetadata(id, val, &k, &v, &klen, &vlen);
+      ParseUserDefMetadata(key, val, &k, &v, &klen, &vlen);
       id3len += 10+1+klen+1+vlen;
     }
-    else if (!strncmp(id, "TIME", 4))
+    else if (!strncmp(key, "TIME", 4))
     {
       if (IsID3TimeVal(val)) id3len += 10+1+4;
     }
-    else if (id[0] == 'T' && strlen(id) == 4)
+    else if (key[0] == 'T' && strlen(key) == 4)
     {
       id3len += 10+1+strlen(val);
     }
-    else if (!strcmp(id, "COMM"))
+    else if (!strcmp(key, "COMM"))
     {
       id3len += 10+5+strlen(val);
     }
-    else if (!strncmp(id, "CHAP", 4) && chapcnt < 255)
+    else if (!strncmp(key, "CHAP", 4) && chapcnt < 255)
     {
       const char *c1=strchr(val, ':');
       const char *c2 = c1 ? strchr(c1+1, ':') : NULL;
       if (c1)
       {
         ++chapcnt;
-        const char *toc_entry=id; // use "CHAP1", etc as the internal toc entry
+        const char *toc_entry=key; // use "CHAP001", etc as the internal toc entry
         const char *chap_name = c2 ? c2+1 : NULL;
         toc.Add(toc_entry, strlen(toc_entry)+1);
         id3len += 10+strlen(toc_entry)+1+16;
@@ -1543,17 +1557,17 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool wa
       _AddSyncSafeInt32(id3len-10);
       for (i=0; i < metadata->GetSize(); ++i)
       {
-        const char *id;
-        const char *val=metadata->Enumerate(i, &id);
-        if (strlen(id) < 8 || strncmp(id, "ID3:", 4) || !val) continue;
-        id += 4;
-        if (!strncmp(id, "TXXX", 4))
+        const char *key;
+        const char *val=metadata->Enumerate(i, &key);
+        if (strlen(key) < 8 || strncmp(key, "ID3:", 4) || !val) continue;
+        key += 4;
+        if (!strncmp(key, "TXXX", 4))
         {
-          memcpy(p, id, 4);
+          memcpy(p, key, 4);
           p += 4;
           const char *k, *v;
           int klen, vlen;
-          ParseUserDefMetadata(id, val, &k, &v, &klen, &vlen);
+          ParseUserDefMetadata(key, val, &k, &v, &klen, &vlen);
           _AddSyncSafeInt32(1+klen+1+vlen);
           memcpy(p, "\x00\x00\x03", 3); // UTF-8
           p += 3;
@@ -1563,12 +1577,12 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool wa
           memcpy(p, v, vlen);
           p += vlen;
         }
-        else if (!strncmp(id, "TIME", 4))
+        else if (!strncmp(key, "TIME", 4))
         {
           int tv=IsID3TimeVal(val);
           if (tv)
           {
-            memcpy(p, id, 4);
+            memcpy(p, key, 4);
             p += 4;
             _AddSyncSafeInt32(1+4);
             memcpy(p, "\x00\x00\x03", 3); // UTF-8
@@ -1579,9 +1593,9 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool wa
             p += 4;
           }
         }
-        else if (id[0] == 'T' && strlen(id) == 4)
+        else if (key[0] == 'T' && strlen(key) == 4)
         {
-          memcpy(p, id, 4);
+          memcpy(p, key, 4);
           p += 4;
           int len=strlen(val);
           _AddSyncSafeInt32(1+len);
@@ -1590,13 +1604,13 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool wa
           memcpy(p, val, len);
           p += len;
         }
-        else if (!strcmp(id, "COMM"))
+        else if (!strcmp(key, "COMM"))
         {
           // http://www.loc.gov/standards/iso639-2/php/code_list.php
           // most apps ignore this, itunes wants "eng" or something locale-specific
           const char *lang=metadata->Get("ID3:COMM_LANG");
 
-          memcpy(p, id, 4);
+          memcpy(p, key, 4);
           p += 4;
           int len=strlen(val);
           _AddSyncSafeInt32(5+len);
@@ -1619,16 +1633,16 @@ int PackID3Chunk(WDL_HeapBuf *hb, WDL_StringKeyedArray<char*> *metadata, bool wa
           memcpy(p, val, len);
           p += len;
         }
-        else if (!strncmp(id, "CHAP", 4) && chapcnt < 255)
+        else if (!strncmp(key, "CHAP", 4) && chapcnt < 255)
         {
           const char *c1=strchr(val, ':');
           const char *c2 = c1 ? strchr(c1+1, ':') : NULL;
           if (c1)
           {
-            // note, the encoding ignores the chapter number (CHAP1, etc)
+            // note, the encoding ignores the chapter number (CHAP001, etc)
 
             ++chapcnt;
-            const char *toc_entry=id; // use "CHAP1", etc as the internal toc entry
+            const char *toc_entry=key; // use "CHAP001", etc as the internal toc entry
             const char *chap_name = c2 ? c2+1 : NULL;
             int st=atoi(val);
             int et=atoi(c1+1);
@@ -1746,7 +1760,7 @@ double ReadMetadataPrefPos(WDL_StringKeyedArray<char*> *metadata, double srate)
   if (!v || !v[0]) v=metadata->Get("VORBIS:TIME_REFERENCE");
   if (v && v[0] && srate > 0.0)
   {
-    WDL_UINT64 i=ParseInt64(v);
+    WDL_UINT64 i=ParseUInt64(v);
     return (double)i/srate;
   }
 
@@ -1762,7 +1776,7 @@ double ReadMetadataPrefPos(WDL_StringKeyedArray<char*> *metadata, double srate)
   v=metadata->Get("XMP:dm/relativeTimestamp");
   if (v && v[0])
   {
-    WDL_UINT64 i=ParseInt64(v);
+    WDL_UINT64 i=ParseUInt64(v);
     return (double)i/1000.0;
   }
 
