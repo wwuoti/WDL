@@ -509,7 +509,10 @@ static void init_options()
       default: break;
     }
 
-    const char *wmname = gdk_x11_screen_get_window_manager_name(gdk_screen_get_default());
+    //NOTE: this cannot be used for getting the wm name on Wayland
+    // so hard code it instead
+    //const char *wmname = gdk_x11_screen_get_window_manager_name(gdk_screen_get_default());
+    const char *wmname = "sway";
     switch (swell_gdk_option("gdk_fullscreen_for_owner_windows", "auto (default is 1 on kwin, otherwise 0)",-1))
     {
       case -1:
@@ -2494,12 +2497,12 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   }
 
 #endif
-  Display *disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
-  Window w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,
+  disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
+  w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,
       wdl_max(r->right-r->left,1),
       wdl_max(r->bottom-r->top,1),
       0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-  GdkWindow *gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+  gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
 
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar) : NULL;
