@@ -944,6 +944,8 @@ __attribute__ ((visibility ("default"))) BOOL WINAPI DllMain(HINSTANCE hInstDLL,
 #define WM_MOVE                         0x0003
 #define WM_SIZE                         0x0005
 #define WM_ACTIVATE                     0x0006
+#define WM_SETFOCUS                     0x0007
+#define WM_KILLFOCUS                    0x0008
 #define WM_SETREDRAW                    0x000B // implemented on macOS NSTableViews, maybe elsewhere?
 #define WM_SETTEXT			0x000C // not implemented on OSX, used internally on Linux
 #define WM_PAINT                        0x000F
@@ -1438,5 +1440,22 @@ typedef struct _COPYDATASTRUCT
   PVOID     lpData;
 } COPYDATASTRUCT, *PCOPYDATASTRUCT;
 
+typedef void *HMONITOR;
+
+typedef struct _MONITORINFO {
+  DWORD cbSize;
+  RECT rcMonitor, rcWork;
+  DWORD dwFlags;
+} MONITORINFO, *LPMONITORINFO;
+
+
+typedef struct _MONITORINFOEX {
+  DWORD cbSize;
+  RECT rcMonitor, rcWork;
+  DWORD dwFlags;
+  char szDevice[256];
+} MONITORINFOEX, *LPMONITORINFOEX;
+
+typedef BOOL (*MONITORENUMPROC)(HMONITOR,HDC,LPRECT,LPARAM);
 
 #endif //_WDL_SWELL_H_TYPES_DEFINED_

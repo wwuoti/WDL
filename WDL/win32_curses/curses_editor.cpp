@@ -920,16 +920,15 @@ void WDL_CursesEditor::draw(int lineidx)
   const int pane_divy=GetPaneDims(paney, paneh);
 
 #ifdef WDL_IS_FAKE_CURSES
-  if (m_cursesCtx)
-  {
-    CURSES_INSTANCE->offs_y[0]=m_paneoffs_y[0];
-    CURSES_INSTANCE->offs_y[1]=m_paneoffs_y[1];
-    CURSES_INSTANCE->div_y=pane_divy;
-    CURSES_INSTANCE->tot_y=m_text.GetSize();
+  if (!m_cursesCtx) return;
 
-    CURSES_INSTANCE->scrollbar_topmargin = m_top_margin;
-    CURSES_INSTANCE->scrollbar_botmargin = m_bottom_margin;
-  }
+  CURSES_INSTANCE->offs_y[0]=m_paneoffs_y[0];
+  CURSES_INSTANCE->offs_y[1]=m_paneoffs_y[1];
+  CURSES_INSTANCE->div_y=pane_divy;
+  CURSES_INSTANCE->tot_y=m_text.GetSize();
+
+  CURSES_INSTANCE->scrollbar_topmargin = m_top_margin;
+  CURSES_INSTANCE->scrollbar_botmargin = m_bottom_margin;
 #endif
 
   attrset(A_NORMAL);
@@ -1446,11 +1445,11 @@ void WDL_CursesEditor::runSearch(bool backwards, bool replaceAll)
   {
     char elbuf[50];
     const int numlines = m_text.GetSize();
-    for (int y = 0; y <= numlines; y ++)
+    if (numlines) for (int y = 0; y <= numlines; y ++)
     {
       int line = m_curs_y + (backwards ? -y : y), wrapflag=0;
-      while (line >= numlines) { line -= numlines; wrapflag = 1; }
-      while (line < 0) { line += numlines; wrapflag = 1; }
+      if (line >= numlines) { line -= numlines; wrapflag = 1; }
+      else if (line < 0) { line += numlines; wrapflag = 1; }
 
       WDL_FastString *tl = m_text.Get(line);
       if (WDL_NOT_NORMALLY(!tl)) continue;
@@ -2584,6 +2583,58 @@ int WDL_CursesEditor::onChar(int c)
       draw();
       setCursor();
       saveUndoState();
+      break;
+    }
+    else if (GetAsyncKeyState(VK_SHIFT)&0x8000)
+    {
+      if (m_curs_x > 0)
+      {
+        WDL_FastString *tl=m_text.Get(m_curs_y);
+        if (tl)
+        {
+          int del_pos = m_curs_x, del_sz;
+
+          for (del_sz = 0; del_sz < m_curs_x && tl->Get()[del_sz] == ' '; del_sz++);
+
+          if (del_sz < m_curs_x && tl->Get()[WDL_utf8_charpos_to_bytepos(tl->Get(),m_curs_x - 1)] == ' ')
+          {
+            // spaces before cursor but not at start of line
+            for (del_sz = 1;
+                m_curs_x - del_sz - 1 >= 0 &&
+                del_sz < wdl_max(m_indent_size,1) &&
+                tl->Get()[WDL_utf8_charpos_to_bytepos(tl->Get(),m_curs_x - del_sz - 1)] == ' ';
+                del_sz++);
+          }
+          else if (del_sz > 0)
+          {
+            // adjust leading indentation
+            int rem = 1;
+            if (m_indent_size > 0)
+            {
+              rem = del_sz % m_indent_size;
+              if (!rem) rem = m_indent_size;
+            }
+            if (del_sz > rem) del_sz = rem;
+            del_pos = del_sz;
+          }
+
+          if (del_sz > 0)
+          {
+            preSaveUndoState();
+            const int xbyte = WDL_utf8_charpos_to_bytepos(tl->Get(),del_pos - del_sz);
+            const int xbytesz=WDL_utf8_charpos_to_bytepos(tl->Get()+xbyte,del_sz);
+
+            bool hadCom = LineCanAffectOtherLines(tl->Get(), xbyte,xbytesz);
+            tl->DeleteSub(xbyte,xbytesz);
+            m_curs_x-=del_sz;
+
+            if (!hadCom) hadCom = LineCanAffectOtherLines(tl->Get(),xbyte,0);
+            draw(hadCom?-1:m_curs_y);
+            saveUndoState();
+            setCursor();
+          }
+        }
+      }
       break;
     }
   default:

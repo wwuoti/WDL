@@ -22,6 +22,7 @@
 
 //#import <Carbon/Carbon.h>
 #import <Cocoa/Cocoa.h>
+#include <IOKit/graphics/IOGraphicsLib.h>
 #include <sys/poll.h>
 #include "swell.h"
 #define SWELL_IMPLEMENT_GETOSXVERSION
@@ -116,7 +117,11 @@ void SWELL_MakeProcessFront(HANDLE h)
 void SWELL_ReleaseNSTask(void *p)
 {
   NSTask *a =(NSTask*)p;
-  [a release];
+  if (a)
+  {
+    if (![a isRunning]) [a waitUntilExit]; // workaround for the system keeping a reference held on macOS 12+ at least
+    [a release];
+  }
 }
 DWORD SWELL_WaitForNSTask(void *p, DWORD msTO)
 {
@@ -166,7 +171,6 @@ HANDLE SWELL_CreateProcessIO(const char *exe, int nparams, const char **params, 
   @catch (id ex) {
   }
 
-  if (tsk) [tsk retain];
   [ex release];
   [ar release];
   if (!tsk) return NULL;
@@ -805,6 +809,82 @@ void SWELL_DisableAppNap(int disable)
   }
 }
 
+
+BOOL EnumDisplayMonitors(HDC hdc, const LPRECT r, MONITORENUMPROC proc,LPARAM lParam)
+{
+  // ignores hdc
+  NSArray *screens = [NSScreen screens];
+  const int ns = [screens count];
+  for (int x = 0; x < ns; x ++)
+  {
+    NSScreen *mon = [screens objectAtIndex:x];
+    if (mon)
+    {
+      NSRect tr=[mon frame];
+      RECT screen_rect,tmp;
+      NSRECT_TO_RECT(&tmp,tr);
+      if (r)
+      {
+        if (!IntersectRect(&screen_rect,r,&tmp))
+          continue;
+      }
+      else
+      {
+        screen_rect = tmp;
+      }
+      if (!proc((HMONITOR)mon,hdc,&screen_rect,lParam)) break;
+    }
+  }
+
+  return TRUE;
+}
+
+BOOL GetMonitorInfo(HMONITOR hmon, void *inf)
+{
+  if (!hmon) return FALSE;
+  MONITORINFOEX *a = (MONITORINFOEX*)inf;
+  if (a->cbSize < sizeof(MONITORINFO)) return FALSE;
+
+  NSScreen *mon = (NSScreen *)hmon;
+  NSRect tr=[mon frame];
+  NSRECT_TO_RECT(&a->rcMonitor,tr);
+  tr = [mon visibleFrame];
+  NSRECT_TO_RECT(&a->rcWork,tr);
+  a->dwFlags = 0;
+
+  if (a->cbSize > sizeof(MONITORINFO))
+  {
+    const int maxlen = (int) (a->cbSize - sizeof(MONITORINFO));
+    const int displayID = [[[mon deviceDescription] valueForKey:@"NSScreenNumber"] intValue];
+    snprintf(a->szDevice,maxlen,"DisplayID %d",displayID);
+
+
+    static bool init;
+    static CFDictionaryRef (*_IODisplayCreateInfoDictionary)(io_service_t framebuffer, IOOptionBits options);
+
+    if (!init)
+    {
+      init = true;
+      void *lib = dlopen("/System/Library/Frameworks/IOKit.framework/Versions/Current/IOKit",RTLD_LAZY);
+      if (lib)
+        *(void **)&_IODisplayCreateInfoDictionary = dlsym(lib,"IODisplayCreateInfoDictionary");
+    }
+
+    if (_IODisplayCreateInfoDictionary)
+    {
+      NSDictionary *deviceInfo = (NSDictionary *)_IODisplayCreateInfoDictionary(CGDisplayIOServicePort(displayID), kIODisplayOnlyPreferredName);
+      NSDictionary *names = [deviceInfo objectForKey:@"DisplayProductName"];
+      if ([names count] > 0)
+      {
+        NSString *s = [names objectForKey:[[names allKeys] objectAtIndex:0]];
+        if (s) SWELL_CFStringToCString(s,a->szDevice,maxlen);
+      }
+      [deviceInfo release];
+    }
+  }
+
+  return TRUE;
+}
 
 
 #endif
