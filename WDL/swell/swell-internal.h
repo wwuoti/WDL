@@ -773,7 +773,7 @@ SWELL_IMPLEMENT_GETOSXVERSION int SWELL_GetOSXVersion()
 
 #include <gdk/gdk.h>
 #include <gdk/gdkkeysyms.h>
-#include <gdk/gdkx.h>
+#include <gdk/x11/gdkx.h>
 
 
 #else
@@ -813,7 +813,7 @@ LRESULT SwellDialogDefaultWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM
 
 
 #ifdef SWELL_TARGET_GDK
-typedef GdkWindow *SWELL_OSWINDOW;
+typedef GdkSurface *SWELL_OSWINDOW;
 #else
 typedef void *SWELL_OSWINDOW; // maps to the HWND__ itself on visible, non-GDK, top level windows
 #endif

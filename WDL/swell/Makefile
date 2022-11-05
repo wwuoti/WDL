@@ -109,15 +109,15 @@ ifndef NOGDK
     endif
   else
     ifdef SWELL_SUPPORT_GTK
-      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gtk+-3.0) -DSWELL_SUPPORT_GTK
+      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gtk4) -DSWELL_SUPPORT_GTK
     else
-      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gdk-3.0)
+      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gdk4)
     endif
     ifndef PRELOAD_GDK
       ifdef SWELL_SUPPORT_GTK
-        LINKEXTRA += $(shell $(PKG_CONFIG) --libs gtk+-3.0)
+        LINKEXTRA += $(shell $(PKG_CONFIG) --libs gtk4)
       else
-        LINKEXTRA += $(shell $(PKG_CONFIG) --libs gdk-3.0)
+        LINKEXTRA += $(shell $(PKG_CONFIG) --libs gdk4)
       endif
     else
       LINKEXTRA += -lX11 -lXi
