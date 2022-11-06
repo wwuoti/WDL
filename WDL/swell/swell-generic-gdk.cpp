@@ -2467,9 +2467,9 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   Window w = 0;
   GdkWindow *gdkw = NULL;
   GdkDisplay *gdkdisp = gdk_window_get_display(ospar);
-//#ifdef GDK_WINDOWING_X11
-//  if (GDK_IS_X11_DISPLAY (gdkdisp))
-//  {
+#ifdef GDK_WINDOWING_X11
+  if (GDK_IS_X11_DISPLAY (gdkdisp))
+  {
     disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
     w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
     //Display* x_display = XOpenDisplay(NULL);
@@ -2481,8 +2481,8 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
     if (!w){
         printf("w is null \n");
     }
-//  }
-//#endif
+  }
+#endif
 
 #ifdef GDK_WINDOWING_WAYLAND
   if (GDK_IS_WAYLAND_DISPLAY (gdkdisp))
@@ -2503,12 +2503,19 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   }
 
 #endif
+
+#ifdef GDK_WINDOWING_X11
+  if (GDK_IS_X11_DISPLAY (gdkdisp))
+  {
   disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
   w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,
       wdl_max(r->right-r->left,1),
       wdl_max(r->bottom-r->top,1),
       0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
   gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+  }
+
+#endif
 
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar) : NULL;
@@ -2525,6 +2532,9 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
     static bool filt_add;
 
 #ifdef GDK_WINDOWING_X11
+
+  if (GDK_IS_X11_DISPLAY (gdkdisp))
+  {
     if (!filt_add)
     {
       filt_add=true;
@@ -2532,6 +2542,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
     }
     SetTimer(hwnd,1,100,NULL);
     if (!need_reparent) SendMessage(hwnd,WM_SIZE,0,0);
+  }
   }
 #endif
   return hwnd;
