@@ -65,7 +65,7 @@ endif
 ifdef DEBUG
 CFLAGS += -O0 -g -D_DEBUG
 else
-CFLAGS += -O2 -DNDEBUG
+CFLAGS += -O3 -march=native -DNDEBUG
   ifdef DEBUG_INFO
     CFLAGS += -g
   else
