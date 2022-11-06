@@ -66,6 +66,8 @@ extern "C" {
 #include <GL/glx.h>
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
+                                                                //
+const int Y_COORD_OFFSET = -40;
 
 static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
 {
@@ -846,6 +848,8 @@ static guint swell_gdkConvertKey(guint key, bool *extended)
 static LRESULT SendMouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   //TODO: fix mouse handling so that elements are clicked on wayland too
+  //all elements are now clicked since offset is fixed
+  //except for main toolbar
   if (!hwnd || !hwnd->m_wndproc) return -1;
   if (!IsWindowEnabled(hwnd)) 
   {
@@ -1227,6 +1231,7 @@ static HWND getMouseTarget(SWELL_OSWINDOW osw, POINT p, const HWND *hwnd_has_osw
   return ChildWindowFromPoint(hwnd,p);
 }
 
+
 static void OnMotionEvent(GdkEventMotion *m)
 {
   swell_lastMessagePos = MAKELONG(((int)m->x_root&0xffff),((int)m->y_root&0xffff));
@@ -1235,7 +1240,8 @@ static void OnMotionEvent(GdkEventMotion *m)
 
   if (hwnd)
   {
-    POINT p2={(int)m->x_root, (int)m->y_root};
+    //TODO: find out why the y axis needs offset
+    POINT p2={(int)m->x_root, (int)m->y_root+Y_COORD_OFFSET};
     ScreenToClient(hwnd, &p2);
     if (hwnd) hwnd->Retain();
     SWELL_SendMouseMessage(hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(p2.x, p2.y));
@@ -1251,7 +1257,7 @@ static void OnScrollEvent(GdkEventScroll *b)
   HWND hwnd = getMouseTarget(b->window,p,NULL);
   if (hwnd)
   {
-    POINT p2={(int)b->x_root, (int)b->y_root};
+    POINT p2={(int)b->x_root, (int)b->y_root+Y_COORD_OFFSET};
     // p2 is screen coordinates for WM_MOUSEWHEEL
 
     int msg=(b->direction == GDK_SCROLL_UP || b->direction == GDK_SCROLL_DOWN) ? WM_MOUSEWHEEL :
@@ -1278,7 +1284,7 @@ static void OnButtonEvent(GdkEventButton *b)
   POINT p={(int)b->x, (int)b->y};
   HWND hwnd2 = getMouseTarget(b->window,p,&hwnd);
 
-  POINT p2={(int)b->x_root, (int)b->y_root};
+  POINT p2={(int)b->x_root, (int)b->y_root+Y_COORD_OFFSET};
   ScreenToClient(hwnd2, &p2);
 
   int msg=WM_LBUTTONDOWN;
