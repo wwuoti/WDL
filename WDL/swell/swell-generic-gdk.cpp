@@ -57,7 +57,7 @@ extern "C" {
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
 
-static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
+static guint32 _gdk_x11_window_get_desktop(GdkSurface *window)
 {
   Atom type;
   gint format;
@@ -77,7 +77,7 @@ static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
   return (guint32) nitems;
 }
 
-static void _gdk_x11_window_move_to_desktop(GdkWindow *window, guint32 desktop)
+static void _gdk_x11_window_move_to_desktop(GdkSurface *window, guint32 desktop)
 {
   XClientMessageEvent xclient;
 
@@ -314,7 +314,7 @@ void swell_recalcMinMaxInfo(HWND hwnd)
   h.max_height= mmi.ptMaxSize.y;
   h.min_width= mmi.ptMinTrackSize.x;
   h.min_height= mmi.ptMinTrackSize.y;
-  gdk_window_set_geometry_hints(hwnd->m_oswindow,&h,(GdkWindowHints) ((hwnd->m_has_had_position ? GDK_HINT_POS : 0) | GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE));
+  gdk_window_set_geometry_hints(hwnd->m_oswindow,&h,(GdkSurfaceHints) ((hwnd->m_has_had_position ? GDK_HINT_POS : 0) | GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE));
 }
 
 void SWELL_initargs(int *argc, char ***argv) 
@@ -599,7 +599,7 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
         }
 
         RECT r = hwnd->m_position;
-        GdkWindowAttr attr={0,};
+        GdkSurfaceAttr attr={0,};
         attr.title = (char *)hwnd->m_title.Get();
         attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
         attr.x = r.left;
@@ -639,7 +639,7 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
           }
           else 
           {
-            GdkWindowTypeHint type_hint = GDK_WINDOW_TYPE_HINT_NORMAL;
+            GdkSurfaceTypeHint type_hint = GDK_WINDOW_TYPE_HINT_NORMAL;
             GdkWMDecoration decor = (GdkWMDecoration) (GDK_DECOR_ALL | GDK_DECOR_MENU);
 
             if (!(hwnd->m_style&WS_THICKFRAME))
@@ -849,10 +849,10 @@ static void OnSelectionRequestEvent(GdkEventSelection *b)
         prop = b->property;
         GdkAtom list[] = { urilistatom() };
 #if SWELL_TARGET_GDK == 2
-        GdkWindow *pw = gdk_window_lookup(b->requestor);
+        GdkSurface *pw = gdk_window_lookup(b->requestor);
         if (!pw) pw = gdk_window_foreign_new(b->requestor);
 #else
-        GdkWindow *pw = b->requestor;
+        GdkSurface *pw = b->requestor;
 #endif
         if (pw)
           gdk_property_change(pw,prop,GDK_SELECTION_TYPE_ATOM,32, GDK_PROP_MODE_REPLACE,(guchar*)list,(int) (sizeof(list)/sizeof(list[0])));
@@ -869,10 +869,10 @@ static void OnSelectionRequestEvent(GdkEventSelection *b)
         prop = b->property;
         GdkAtom list[] = { s_clipboard_setstate_fmt };
 #if SWELL_TARGET_GDK == 2
-        GdkWindow *pw = gdk_window_lookup(b->requestor);
+        GdkSurface *pw = gdk_window_lookup(b->requestor);
         if (!pw) pw = gdk_window_foreign_new(b->requestor);
 #else
-        GdkWindow *pw = b->requestor;
+        GdkSurface *pw = b->requestor;
 #endif
         if (pw)
           gdk_property_change(pw,prop,GDK_SELECTION_TYPE_ATOM,32, GDK_PROP_MODE_REPLACE,(guchar*)list,(int) (sizeof(list)/sizeof(list[0])));
@@ -939,10 +939,10 @@ static void OnSelectionRequestEvent(GdkEventSelection *b)
         }
 
 #if SWELL_TARGET_GDK == 2
-        GdkWindow *pw = gdk_window_lookup(b->requestor);
+        GdkSurface *pw = gdk_window_lookup(b->requestor);
         if (!pw) pw = gdk_window_foreign_new(b->requestor);
 #else
-        GdkWindow *pw = b->requestor;
+        GdkSurface *pw = b->requestor;
 #endif
         if (pw)
           gdk_property_change(pw,prop,b->target,8, GDK_PROP_MODE_REPLACE,ptr,len);
@@ -1426,7 +1426,7 @@ static void OnDropStartEvent(GdkEventDND *e)
   }
 }
 
-static bool is_our_oswindow(GdkWindow *w)
+static bool is_our_oswindow(GdkSurface *w)
 {
   while (w)
   {
@@ -1443,7 +1443,7 @@ static void deactivateTimer(HWND hwnd, UINT uMsg, UINT_PTR tm, DWORD dwt)
   KillTimer(NULL,s_deactivate_timer);
   s_deactivate_timer=0;
   if (swell_app_is_inactive) return;
-  GdkWindow *window = gdk_screen_get_active_window(gdk_screen_get_default());
+  GdkSurface *window = gdk_screen_get_active_window(gdk_screen_get_default());
   if (!is_our_oswindow(window))
     on_deactivate();
 
@@ -1810,7 +1810,7 @@ bool GetWindowRect(HWND hwnd, RECT *r)
 void swell_oswindow_begin_resize(SWELL_OSWINDOW wnd)
 {
   // make sure window is resizable (hints will be re-set on upcoming CONFIGURE event)
-  gdk_window_set_geometry_hints(wnd,NULL,(GdkWindowHints) 0); 
+  gdk_window_set_geometry_hints(wnd,NULL,(GdkSurfaceHints) 0); 
 }
 
 void swell_oswindow_resize(SWELL_OSWINDOW wnd, int reposflag, RECT f)
@@ -1851,7 +1851,7 @@ void swell_oswindow_postresize(HWND hwnd, RECT f)
     memset(&h,0,sizeof(h));
     h.max_width = h.min_width = f.right - f.left;
     h.max_height = h.min_height = f.bottom - f.top;
-    gdk_window_set_geometry_hints(hwnd->m_oswindow,&h,(GdkWindowHints) ((hwnd->m_has_had_position ? GDK_HINT_POS : 0) | GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE));
+    gdk_window_set_geometry_hints(hwnd->m_oswindow,&h,(GdkSurfaceHints) ((hwnd->m_has_had_position ? GDK_HINT_POS : 0) | GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE));
   }
 }
 
@@ -1992,10 +1992,10 @@ void SetClipboardData(UINT type, HANDLE h)
   {
     if (s_clipboard_setstate) { GlobalFree(s_clipboard_setstate); s_clipboard_setstate=NULL; }
     s_clipboard_setstate_fmt=NULL;
-    static GdkWindow *w;
+    static GdkSurface *w;
     if (!w)
     {
-      GdkWindowAttr attr={0,};
+      GdkSurfaceAttr attr={0,};
       attr.title = (char *)"swell clipboard";
       attr.event_mask = GDK_ALL_EVENTS_MASK;
       attr.wclass = GDK_INPUT_ONLY;
@@ -2084,13 +2084,13 @@ DWORD GetMessagePos()
 }
 
 struct bridgeState {
-  bridgeState(bool needrep, GdkWindow *_w, Window _nw, Display *_disp, GdkWindow *_curpar);
+  bridgeState(bool needrep, GdkSurface *_w, Window _nw, Display *_disp, GdkSurface *_curpar);
   ~bridgeState();
 
-  GdkWindow *w;
+  GdkSurface *w;
   Window native_w;
   Display *native_disp;
-  GdkWindow *cur_parent;
+  GdkSurface *cur_parent;
 
   bool lastvis;
   bool need_reparent;
@@ -2128,7 +2128,7 @@ bridgeState::~bridgeState()
     XDestroyWindow(native_disp,native_w);
   }
 }
-bridgeState::bridgeState(bool needrep, GdkWindow *_w, Window _nw, Display *_disp, GdkWindow *_curpar)
+bridgeState::bridgeState(bool needrep, GdkSurface *_w, Window _nw, Display *_disp, GdkSurface *_curpar)
 {
   gl_ctx = NULL;
   w=_w;
@@ -2333,7 +2333,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   HWND hwnd = NULL;
   *wref = NULL;
 
-  GdkWindow *ospar = NULL;
+  GdkSurface *ospar = NULL;
   HWND hpar = viewpar;
   while (hpar)
   {
@@ -2355,7 +2355,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
       wdl_max(r->right-r->left,1),
       wdl_max(r->bottom-r->top,1),
       0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-  GdkWindow *gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
+  GdkSurface *gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
 
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar) : NULL;
@@ -2433,7 +2433,7 @@ static LRESULT WINAPI dropSourceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
     case WM_CREATE:
       if (!swell_dragsrc_osw)
       {
-        GdkWindowAttr attr={0,};
+        GdkSurfaceAttr attr={0,};
         attr.title = (char *)"swell drag source";
         attr.event_mask = GDK_ALL_EVENTS_MASK;
         attr.wclass = GDK_INPUT_ONLY;
@@ -2451,7 +2451,7 @@ static LRESULT WINAPI dropSourceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
       {
         POINT p;
         GetCursorPos(&p);
-        GdkWindow *w = NULL;
+        GdkSurface *w = NULL;
         GdkDragProtocol proto;
         gdk_drag_find_window_for_screen(inf->dragctx,NULL,gdk_screen_get_default(),p.x,p.y,&w,&proto);
         // todo: need to update gdk_drag_context_get_drag_window()
@@ -2508,10 +2508,10 @@ static LRESULT WINAPI dropSourceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
         {
           *aOut = evt->property;
 #if SWELL_TARGET_GDK == 2
-          GdkWindow *pw = gdk_window_lookup(evt->requestor);
+          GdkSurface *pw = gdk_window_lookup(evt->requestor);
           if (!pw) pw = gdk_window_foreign_new(evt->requestor);
 #else
-          GdkWindow *pw = evt->requestor;
+          GdkSurface *pw = evt->requestor;
 #endif
           if (pw)
             gdk_property_change(pw,*aOut,evt->target,8, GDK_PROP_MODE_REPLACE,(guchar*)s.Get(),s.GetLength());
@@ -2925,7 +2925,7 @@ bool SWELL_SetGLContextToView(HWND h)
 
 void *SWELL_GetOSWindow(HWND hwnd, const char *type)
 {
-  if (hwnd && !strcmp(type,"GdkWindow")) return hwnd->m_oswindow;
+  if (hwnd && !strcmp(type,"GdkSurface")) return hwnd->m_oswindow;
   return NULL;
 }
 
