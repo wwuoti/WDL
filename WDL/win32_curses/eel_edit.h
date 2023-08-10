@@ -1,7 +1,7 @@
 #ifndef __WDL_EEL_EDITOR_H_
 #define __WDL_EEL_EDITOR_H_
 
-#define STATE_BEFORE_CODE -1
+#define STATE_BEFORE_CODE 255
 
 #include "curses_editor.h"
 #include "../assocarray.h"
@@ -151,6 +151,7 @@ public:
   HWND m_suggestion_hwnd;
   suggested_matchlist m_suggestion_list;
   int m_suggestion_hwnd_sel;
+  POINT m_suggestion_hwnd_initmousepos;
   int m_suggestion_tokpos, m_suggestion_toklen; // bytepos/len
   int m_suggestion_curline_comment_state;
 

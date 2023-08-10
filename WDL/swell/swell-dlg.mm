@@ -801,7 +801,7 @@ static void SendTreeViewExpandNotification(SWELL_hwndChild *par, NSNotification 
     if ([sender isKindOfClass:[SWELL_ComboBox class]])
     {
       SWELL_ComboBox *p = (SWELL_ComboBox *)sender;
-      const int sel = [p indexOfSelectedItem];
+      const int sel = (int)[p indexOfSelectedItem];
       if (sel == p->m_ignore_selchg) return;
       p->m_ignore_selchg = sel;
     }
@@ -819,14 +819,20 @@ static void SendTreeViewExpandNotification(SWELL_hwndChild *par, NSNotification 
 - (void)textDidEndEditing:(NSNotification *)aNotification
 {
   id sender=[aNotification object];
-  int code=EN_CHANGE;
   if ([sender isKindOfClass:[NSComboBox class]]) return;
   if (m_wndproc&&!m_hashaddestroy)
   {
-    m_wndproc((HWND)self,WM_COMMAND,([(NSControl*)sender tag])|(code<<16),(LPARAM)sender);
-    code=EN_KILLFOCUS;
+    int code=EN_KILLFOCUS;
     m_wndproc((HWND)self,WM_COMMAND,([(NSControl*)sender tag])|(code<<16),(LPARAM)sender);
   }
+}
+
+- (void)textDidChange:(NSNotification *)aNotification
+{
+  id sender=[aNotification object];
+  int code=EN_CHANGE;
+  if ([sender isKindOfClass:[NSComboBox class]]) return;
+  if (m_wndproc&&!m_hashaddestroy) m_wndproc((HWND)self,WM_COMMAND,MAKELONG([(NSControl*)sender tag],code),(LPARAM)sender);
 }
 
 - (void)controlTextDidChange:(NSNotification *)aNotification
@@ -996,7 +1002,7 @@ static void SendTreeViewExpandNotification(SWELL_hwndChild *par, NSNotification 
     else if ([sender isKindOfClass:[SWELL_Button class]])
     {
       int rf;
-      if ((rf=(int)[(SWELL_Button*)sender swellGetRadioFlags]))
+      if ((rf=(int)[(SWELL_Button*)sender swellGetRadioFlags]) & ~4096)
       {
         NSView *par=(NSView *)GetParent((HWND)sender);
         if (par && [par isKindOfClass:[NSWindow class]]) par=[(NSWindow *)par contentView];
@@ -1915,7 +1921,10 @@ static void MakeGestureInfo(NSEvent* evt, GESTUREINFO* gi, HWND hwnd, int type)
   NSArray* SWELL_DoDragDrop(NSURL*);
   return SWELL_DoDragDrop(dropdestination); 
 }
-
+- (BOOL)ignoreModifierKeysWhileDragging
+{
+  return GetProp((HWND)self,"SWELL_IgnoreModifierKeysWhileDragging") != NULL ? YES : NO;
+}
 
 - (BOOL)becomeFirstResponder 
 {
@@ -2304,9 +2313,13 @@ static HMENU swell_getEffectiveMenuForWindow(NSView *cv, NSWindow *window, bool 
 - (void)setFrame:(NSRect)frameRect display:(BOOL)displayFlag \
 { \
   [super setFrame:frameRect display:displayFlag]; \
-  if((int)frameRect.size.width != (int)lastFrameSize.width || (int)frameRect.size.height != (int)lastFrameSize.height) { \
+  bool z = !![self isZoomed]; \
+  if((int)frameRect.size.width != (int)lastFrameSize.width || \
+     (int)frameRect.size.height != (int)lastFrameSize.height || \
+      z != m_lastZoom) { \
     SWELL_hwndChild *hc = (SWELL_hwndChild*)[self contentView]; \
-    sendSwellMessage(hc,WM_SIZE,0,0); \
+    sendSwellMessage(hc,WM_SIZE,z!=m_lastZoom ? z ? SIZE_MAXIMIZED : SIZE_RESTORED : 0,0); \
+    m_lastZoom=z; \
     if ([hc isOpaque]) InvalidateRect((HWND)hc,NULL,FALSE); \
     lastFrameSize=frameRect.size; \
    } \
@@ -2460,7 +2473,8 @@ static HMENU swell_getEffectiveMenuForWindow(NSView *cv, NSWindow *window, bool 
 #define INIT_COMMON_VARS \
   m_enabled=TRUE; \
   m_owner=0; \
-  m_ownedwnds=0; 
+  m_ownedwnds=0; \
+  m_lastZoom=false; \
 
 
 #if 0
