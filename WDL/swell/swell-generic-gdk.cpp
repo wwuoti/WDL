@@ -52,7 +52,9 @@ extern "C" {
   #endif
 #endif
 
-//TODO: solve importing these for briding windows on wayland
+//TODO: solve importing these for bridging windows on wayland
+//might be worth testing launching child processes manually and seeing
+//if xwayland takes over them automatically
 #ifdef GDK_WINDOWING_X11
     #include <X11/Xatom.h>
 
@@ -228,7 +230,6 @@ static void on_deactivate()
 {
   swell_app_is_inactive=true;
   HWND lf = swell_oswindow_to_hwnd(SWELL_focused_oswindow);
-//TODO: find out if lf->m_oswindow contains GDK window?
 //TODO: fix segfaulting here
 #ifdef GDK_WINDOWING_X11
     if (GDK_IS_X11_WINDOW (lf->m_oswindow))
@@ -757,13 +758,13 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
 
 void swell_oswindow_maximize(HWND hwnd, bool wantmax) // false=restore
 {
-  if (WDL_NORMALLY(hwnd && hwnd->m_oswindow))
-  {
-    if (wantmax)
-      gdk_window_maximize(hwnd->m_oswindow);
-    else
-      gdk_window_unmaximize(hwnd->m_oswindow);
-  }
+  //if (WDL_NORMALLY(hwnd && hwnd->m_oswindow))
+  //{
+  //  if (wantmax)
+  //    gdk_window_maximize(hwnd->m_oswindow);
+  //  else
+  //    gdk_window_unmaximize(hwnd->m_oswindow);
+  //}
 }
 
 void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
@@ -1501,6 +1502,7 @@ static void OnScrollEvent(GdkEventScroll *b)
       SWELL_SendMouseMessage(hwnd, msg, (v<<16), MAKELPARAM(p2.x, p2.y));
       if (hwnd) hwnd->Release();
     }
+    // TODO: ensure window is updated here in similar fashion to changing hover target window!
   }
 }
 
@@ -1997,6 +1999,7 @@ void SWELL_RunEvents()
 #endif
 
     GMainContext *ctx=g_main_context_default();
+    // TODO: segfault here when opening X11 bridged plugins
     while (g_main_context_iteration(ctx,FALSE))
     {
       GdkEvent *evt;
@@ -2226,13 +2229,13 @@ void swell_oswindow_postresize(HWND hwnd, RECT f)
 
 void UpdateWindow(HWND hwnd)
 {
-#if SWELL_TARGET_GDK == 2
+//#if SWELL_TARGET_GDK == 2
   if (hwnd)
   {
     while (hwnd && !hwnd->m_oswindow) hwnd=hwnd->m_parent;
     if (hwnd && hwnd->m_oswindow) gdk_window_process_updates(hwnd->m_oswindow,true);
   }
-#endif
+//#endif
 }
 
 void swell_oswindow_invalidate(HWND hwnd, const RECT *r) 
