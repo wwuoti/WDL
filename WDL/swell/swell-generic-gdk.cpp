@@ -861,8 +861,6 @@ static guint swell_gdkConvertKey(guint key, bool *extended)
   return 0;
 }
 
-static LRESULT SendMouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
   //TODO: fix mouse handling so that elements are clicked on wayland too
   //all elements are now clicked since offset is fixed
 LRESULT SWELL_SendMouseMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -1945,7 +1943,6 @@ void SWELL_RunEvents()
 #endif
 
     GMainContext *ctx=g_main_context_default();
-    // TODO: segfault here when opening X11 bridged plugins
     while (g_main_context_iteration(ctx,FALSE))
     {
       GdkEvent *evt;
@@ -2801,8 +2798,11 @@ static GdkFilterReturn filterCreateShowProc(GdkXEvent *xev, GdkEvent *event, gpo
   return GDK_FILTER_CONTINUE;
 }
 
+// TODO: is this called at all when creating plugin windows?
 HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
 {
+
+  printf("BRIDGING WINDOW");
   HWND hwnd = NULL;
   *wref = NULL;
 
@@ -2826,27 +2826,30 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   Display *disp = NULL;
   Window w = 0;
   GdkWindow *gdkw = NULL;
+  Display* x_display;
   GdkDisplay *gdkdisp = gdk_window_get_display(ospar);
-#ifdef GDK_WINDOWING_X11
+  int screen_num;
   if (GDK_IS_X11_DISPLAY (gdkdisp))
   {
-    disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
-    w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-    //Display* x_display = XOpenDisplay(NULL);
-    //int screen_num = DefaultScreen(x_display);
-    //w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+  
+  //TODO: find another way to create new x window
+  //x11 display should be retrieved from system, so that xwayland answers the call
+    x_display = XOpenDisplay(NULL);
+    screen_num = DefaultScreen(x_display);
+    w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
     gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
     //gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_x11_lookup_xdisplay(x_display),w) : NULL;
-
-    if (!w){
-        printf("w is null \n");
-    }
   }
-#endif
 
 #ifdef GDK_WINDOWING_WAYLAND
   if (GDK_IS_WAYLAND_DISPLAY (gdkdisp))
   {
+
+  //x11 display should be retrieved from system, so that xwayland answers the call
+    x_display = XOpenDisplay(NULL);
+    screen_num = DefaultScreen(x_display);
+    w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+    XMapWindow(x_display, w);
     GdkWindowAttr attr={0,};
     //attr.title = (char *)hwnd->m_title.Get();
     //attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
@@ -2864,20 +2867,10 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
 
 #endif
 
-#ifdef GDK_WINDOWING_X11
-  if (GDK_IS_X11_DISPLAY (gdkdisp))
-  {
-  disp = gdk_x11_display_get_xdisplay(gdk_window_get_display(ospar));
-  w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,
-      wdl_max(r->right-r->left,1),
-      wdl_max(r->bottom-r->top,1),
-      0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-  gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
-  }
-
-#endif
-
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
+  //TODO: bridgeState likely can't work with Wayland gdk window and pure X11 window created for XWayland
+  if (gdkw)
+      printf("Gdkw foudn");
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar, hwnd) : NULL;
   hwnd->m_classname = bridge_class_name;
   hwnd->m_private_data = (INT_PTR) bs;
@@ -2889,7 +2882,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   if (GDK_IS_X11_DISPLAY(gdk_window_get_display(ospar)))
     XSelectInput(disp, w, StructureNotifyMask | SubstructureNotifyMask);
 #endif
-    static bool filt_add;
+static bool filt_add;
 
 #ifdef GDK_WINDOWING_X11
 
