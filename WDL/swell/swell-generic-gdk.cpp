@@ -2798,11 +2798,10 @@ static GdkFilterReturn filterCreateShowProc(GdkXEvent *xev, GdkEvent *event, gpo
   return GDK_FILTER_CONTINUE;
 }
 
-// TODO: is this called at all when creating plugin windows?
 HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
 {
 
-  printf("BRIDGING WINDOW");
+  printf("BRIDGING WINDOW\n");
   HWND hwnd = NULL;
   *wref = NULL;
 
@@ -2836,20 +2835,24 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   //x11 display should be retrieved from system, so that xwayland answers the call
     x_display = XOpenDisplay(NULL);
     screen_num = DefaultScreen(x_display);
-    w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+    w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,
+            wdl_max(r->right-r->left,1),
+            wdl_max(r->bottom-r->top,1),
+            0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
     gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),w) : NULL;
-    //gdkw = w ? gdk_x11_window_foreign_new_for_display(gdk_x11_lookup_xdisplay(x_display),w) : NULL;
   }
 
 #ifdef GDK_WINDOWING_WAYLAND
   if (GDK_IS_WAYLAND_DISPLAY (gdkdisp))
   {
-
   //x11 display should be retrieved from system, so that xwayland answers the call
     x_display = XOpenDisplay(NULL);
     screen_num = DefaultScreen(x_display);
     w = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+    XMapWindow(x_display, RootWindow(x_display, screen_num));
     XMapWindow(x_display, w);
+    XClearWindow(x_display, w);
+    XMapRaised(x_display, w);
     GdkWindowAttr attr={0,};
     //attr.title = (char *)hwnd->m_title.Get();
     //attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
@@ -2870,7 +2873,7 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
   //TODO: bridgeState likely can't work with Wayland gdk window and pure X11 window created for XWayland
   if (gdkw)
-      printf("Gdkw foudn");
+      printf("GDKW FOUND\n");
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar, hwnd) : NULL;
   hwnd->m_classname = bridge_class_name;
   hwnd->m_private_data = (INT_PTR) bs;
