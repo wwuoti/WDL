@@ -16,6 +16,8 @@ endif
 PKG_CONFIG = pkg-config
 
 COMPILER=GCC
+CC=gcc-10
+CXX=g++-10
 
 CFLAGS = -pipe -fvisibility=hidden -fno-math-errno -fPIC -DPIC -Wall -Wshadow -Wno-unused-function -Wno-multichar -Wtype-limits
 
@@ -107,9 +109,9 @@ ifndef NOGDK
     endif
   else
     ifdef SWELL_SUPPORT_GTK
-      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gtk4) -DSWELL_SUPPORT_GTK
+      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gtk4-x11) -DSWELL_SUPPORT_GTK
     else
-      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gdk4)
+      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gtk4-x11)
     endif
     ifndef PRELOAD_GDK
       ifdef SWELL_SUPPORT_GTK
