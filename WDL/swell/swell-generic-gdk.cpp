@@ -66,7 +66,8 @@ extern "C" {
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
                                                                 //
-const int Y_COORD_OFFSET = -40;
+//const int Y_COORD_OFFSET = -40;
+const int Y_COORD_OFFSET = 0;
 
 static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
 {
