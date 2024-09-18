@@ -5,56 +5,72 @@
 #define WDL_HASSTRINGS_EXPORT
 #endif
 
-WDL_HASSTRINGS_EXPORT bool hasStrings_isNonWordChar(int c)
+WDL_HASSTRINGS_EXPORT const char *hasStrings_rewutf8(const char *str, const char *base)
 {
-  // treat as whitespace when searching for " foo "
-  switch (c)
+#ifdef WDL_HASSTRINGS_REWUTF8_HOOK
+  WDL_HASSTRINGS_REWUTF8_HOOK(str, base)
+#endif
+  while (str > base && (*(unsigned char *)str & 0xC0) == 0x80) str--;
+  return str;
+}
+WDL_HASSTRINGS_EXPORT int hasStrings_isNonWordChar(const char *cptr)
+{
+  // treat non-alnum non-utf-8 as whitespace when searching for " foo "
+  const unsigned char c = *(const unsigned char *)cptr;
+  if (c < 128)
   {
-    case 0:
-    case 1:
-    case ' ':
-    case '\t':
-    case '.':
-    case '/':
-    case '\\':
-      return true;
+    if ((c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9'))
+    {
+      return 0;
+    }
 
-    default:
-      return false;
+    return 1; // non-alnum ascii are non-word chars
   }
+
+  // most UTF-8 characters are word characters
+  if (c == 0xC2)
+  {
+    // except UTF-8 U+A1 to U+B1, U+B4, U+B6, U+B7, U+BB, U+BF
+    const unsigned char c2 = ((unsigned char*)cptr)[1];
+    if (c2 >= 0xa1)
+    {
+      switch (c2)
+      {
+        case 0xB4: case 0xB6: case 0xB7: case 0xBB: case 0xBF:
+          return 1;
+        default:
+          if (c2 <= 0xB1) return 1;
+        break;
+      }
+    }
+  }
+  else if (c == 0xE2)
+  {
+    unsigned char c2;
+    // except UTF-8 U+2000-U+206F and U+20A0-U+20BF
+    switch (((unsigned char*)cptr)[1])
+    {
+      case 0x80:
+        c2 = ((unsigned char*)cptr)[2];
+        if (c2 >= 0x80 && c2 <= 0xBF) return 1;
+      break;
+      case 0x81:
+        c2 = ((unsigned char*)cptr)[2];
+        if (c2 >= 0x80 && c2 <= 0xAF) return 1;
+      break;
+      case 0x82: // U+20A0-U+20BF (currency signs)
+        c2 = ((unsigned char*)cptr)[2];
+        if (c2 >= 0xa0 && c2 <= 0xBF) return 1;
+      break;
+    }
+  }
+
+  return 0;
 }
 
-// these are latin-1 supplemental (first utf-8 byte must be 0xc3), pass second byte&~0x20, second byte
-#define IS_UTF8_BYTE2_LATIN1S_A(cc,ccf) ((cc) >= 0x80 && (cc) <= 0x85)
-#define IS_UTF8_BYTE2_LATIN1S_C(cc,ccf) ((cc) == 0x87)
-#define IS_UTF8_BYTE2_LATIN1S_E(cc,ccf) ((cc) >= 0x88 && (cc) <= 0x8b)
-#define IS_UTF8_BYTE2_LATIN1S_I(cc,ccf) ((cc) >= 0x8c && (cc) <= 0x8f)
-#define IS_UTF8_BYTE2_LATIN1S_N(cc,ccf) ((cc) == 0x91)
-#define IS_UTF8_BYTE2_LATIN1S_O(cc,ccf) ((cc) >= 0x92 && (cc) <= 0x96)
-#define IS_UTF8_BYTE2_LATIN1S_U(cc,ccf) ((cc) >= 0x99 && (cc) <= 0x9c)
-#define IS_UTF8_BYTE2_LATIN1S_Y(cc,ccf) ((cc) == 0x9d || (ccf) == 0x9f)
-
-// latin extended A
-#define IS_UTF8_EXT1A_A(b1, b2) ((b1)==0xc4 && (b2) >= 0x80 && (b2) <= 0x85)
-#define IS_UTF8_EXT1A_C(b1, b2) ((b1)==0xc4 && (b2) >= 0x86 && (b2) <= 0x8D)
-#define IS_UTF8_EXT1A_D(b1, b2) ((b1)==0xc4 && (b2) >= 0x8E && (b2) <= 0x91)
-#define IS_UTF8_EXT1A_E(b1, b2) ((b1)==0xc4 && (b2) >= 0x92 && (b2) <= 0x9B)
-#define IS_UTF8_EXT1A_G(b1, b2) ((b1)==0xc4 && (b2) >= 0x9C && (b2) <= 0xa3)
-#define IS_UTF8_EXT1A_H(b1, b2) ((b1)==0xc4 && (b2) >= 0xa4 && (b2) <= 0xa7)
-#define IS_UTF8_EXT1A_I(b1, b2) ((b1)==0xc4 && (b2) >= 0xa8 && (b2) <= 0xb1)
-#define IS_UTF8_EXT1A_J(b1, b2) ((b1)==0xc4 && (b2) >= 0xb4 && (b2) <= 0xb5)
-#define IS_UTF8_EXT1A_K(b1, b2) ((b1)==0xc4 && (b2) >= 0xb6 && (b2) <= 0xb8)
-#define IS_UTF8_EXT1A_L(b1, b2) ((b1)==0xc4 ? ((b2) >= 0xb9 && (b2) <= 0xbf) : \
-                                ((b1)==0xc5 && (b2) >= 0x80 && (b2) <= 0x82))
-#define IS_UTF8_EXT1A_N(b1, b2) ((b1)==0xc5 && (b2) >= 0x83 && (b2) <= 0x89)
-#define IS_UTF8_EXT1A_O(b1, b2) ((b1)==0xc5 && (b2) >= 0x8c && (b2) <= 0x91)
-#define IS_UTF8_EXT1A_R(b1, b2) ((b1)==0xc5 && (b2) >= 0x94 && (b2) <= 0x99)
-#define IS_UTF8_EXT1A_S(b1, b2) ((b1)==0xc5 && (b2) >= 0x9a && (b2) <= 0xa1)
-#define IS_UTF8_EXT1A_T(b1, b2) ((b1)==0xc5 && (b2) >= 0xa2 && (b2) <= 0xa7)
-#define IS_UTF8_EXT1A_U(b1, b2) ((b1)==0xc5 && (b2) >= 0xa8 && (b2) <= 0xb3)
-#define IS_UTF8_EXT1A_W(b1, b2) ((b1)==0xc5 && (b2) >= 0xb4 && (b2) <= 0xb5)
-#define IS_UTF8_EXT1A_Y(b1, b2) ((b1)==0xc5 && (b2) >= 0xb6 && (b2) <= 0xb8)
-#define IS_UTF8_EXT1A_Z(b1, b2) ((b1)==0xc5 && (b2) >= 0xb9 && (b2) <= 0xbe)
+#include "utf8_extended.h"
 
 // returns negative if does not match but more of a is available to search
 // returns 0 if done searching without match
@@ -74,7 +90,23 @@ WDL_HASSTRINGS_EXPORT int hasStrings_utf8cmp(const unsigned char * const a, cons
     {
       if (cb != 'a'-'A')
       {
-        if (ca < 0xc3 || ca > 0xc5) return -ca;
+        if (ca < 0xc3 || ca > 0xc5)
+        {
+          if (ca == 0xE2 && cb == ('\''-0xE2) && a[aidx+1] == 0x80 && (a[aidx+2]&~1) == 0x98)
+          {
+            aidx+=3;
+            ++b;
+            --n;
+            continue;
+          }
+          const int skipl = WDL_IS_UTF8_SKIPPABLE(ca,a[aidx+1]);
+          if (skipl)
+          {
+            aidx += skipl;
+            continue;
+          }
+          return -ca;
+        }
 
         const int ccf = a[++aidx];
         if (ccf < 0x80) return -ca;
@@ -85,7 +117,7 @@ WDL_HASSTRINGS_EXPORT int hasStrings_utf8cmp(const unsigned char * const a, cons
           const int cc = ccf & ~0x20;
           switch (*b)
           {
-#define SCAN(ch, CH) case ch: if (!IS_UTF8_BYTE2_LATIN1S_##CH(cc,ccf)) return -ca; break;
+#define SCAN(ch, CH) case ch: if (!WDL_IS_UTF8_BYTE2_LATIN1S_##CH(cc,ccf)) return -ca; break;
           SCAN('a',A)
           SCAN('c',C)
           SCAN('e',E)
@@ -103,7 +135,7 @@ WDL_HASSTRINGS_EXPORT int hasStrings_utf8cmp(const unsigned char * const a, cons
           // latin extended A
           switch (*b)
           {
-#define SCAN(ch, CH) case ch: if (!IS_UTF8_EXT1A_##CH(ca,ccf)) return -ca; break;
+#define SCAN(ch, CH) case ch: if (!WDL_IS_UTF8_EXT1A_##CH(ca,ccf)) return -ca; break;
           SCAN('a',A)
           SCAN('c',C)
           SCAN('d',D)
@@ -150,6 +182,16 @@ static const char *hasStrings_scan_for_char_match(const char *p, char v)
 
   switch (v)
   {
+    case '\'':
+      for (;;) {
+        unsigned char c = *(const unsigned char *)p;
+        if (!c) return NULL;
+        if (c == '\'') return p;
+        if (c == 0xE2 && ((unsigned char*)p)[1] == 0x80 && (((unsigned char*)p)[2]&~1) == 0x98)
+          return p;
+        p++;
+      }
+
 #define SCAN(ch, CH) case (ch): for (;;) { \
       unsigned char c = *(const unsigned char *)p; \
       if (!c) return NULL; \
@@ -158,9 +200,9 @@ static const char *hasStrings_scan_for_char_match(const char *p, char v)
         if (c == 0xc3) { \
           const unsigned char ccf = ((const unsigned char*)p)[1]; \
           const unsigned char cc = ccf & ~0x20; \
-          if (IS_UTF8_BYTE2_LATIN1S_##CH(cc,ccf)) return p; \
+          if (WDL_IS_UTF8_BYTE2_LATIN1S_##CH(cc,ccf)) return p; \
         } else { \
-          if (IS_UTF8_EXT1A_##CH(c, ((const unsigned char*)p)[1])) return p; \
+          if (WDL_IS_UTF8_EXT1A_##CH(c, ((const unsigned char*)p)[1])) return p; \
         } \
       } \
       p++; \
@@ -180,7 +222,7 @@ static const char *hasStrings_scan_for_char_match(const char *p, char v)
       unsigned char c = *(const unsigned char *)p; \
       if (!c) return NULL; \
       if ((c|0x20) == (ch)) return p; \
-      if (IS_UTF8_EXT1A_##CH(c, ((const unsigned char*)p)[1])) return p; \
+      if (WDL_IS_UTF8_EXT1A_##CH(c, ((const unsigned char*)p)[1])) return p; \
       p++; \
     }
 
@@ -197,7 +239,6 @@ static const char *hasStrings_scan_for_char_match(const char *p, char v)
     SCAN('z',Z)
 #undef SCAN
 
-#undef SCAN
   }
 
   for (;;)
@@ -209,9 +250,17 @@ static const char *hasStrings_scan_for_char_match(const char *p, char v)
   }
 }
 
-WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_list_size,
-    const LineParser *lp,
-    int (*cmp_func)(const char *a, int apos, const char *b, int blen)  // if set, returns length of matched string (0 if no match)
+WDL_HASSTRINGS_EXPORT const char *hasStrings_skipSkippable(const char *cptr)
+{
+  int skip;
+  while ((skip=WDL_IS_UTF8_SKIPPABLE(((unsigned char*)cptr)[0],((unsigned char*)cptr)[1]))>0) cptr+=skip;
+  return cptr;
+}
+
+WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_list_size, const LineParser *lp
+#ifdef WDL_HASSTRINGS_EXTRA_PARAMETERS
+   WDL_HASSTRINGS_EXTRA_PARAMETERS
+#endif
     )
 {
   if (!lp) return true;
@@ -320,8 +369,6 @@ WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_li
           }
         }
 
-        bool use_cmp_func = cmp_func != NULL && !(TOP_OF_STACK&1);
-
         if (!wc_left && !wc_right && *n)
         {
           switch (lp->gettoken_quotingchar(x))
@@ -334,7 +381,6 @@ WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_li
                 if (!*p)
                 {
                   wc_left=wc_right=2;
-                  use_cmp_func = false;
                 }
               }
             break;
@@ -342,32 +388,29 @@ WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_li
         }
 
         bool matched = false;
+
+#ifdef WDL_HASSTRINGS_PRE_MATCH
+        if (!wc_left && !wc_right && WDL_HASSTRINGS_PRE_MATCH(n))
+          matched = true;
+        else
+#endif
         for (int i = 0; i < name_list_size; i ++)
         {
           const char *name = name_list[i];
           const char *t = name;
 
 #define MATCH_RIGHT_CHECK_WORD(SZ) \
-                (wc_right == 0 || ((const unsigned char*)(t))[SZ] < 2 || (wc_right > 1 && hasStrings_isNonWordChar((t)[SZ])))
+                (wc_right == 0 || \
+                  ((const unsigned char*)(t))[SZ] < 2 || \
+                  (wc_right > 1 && hasStrings_isNonWordChar(hasStrings_skipSkippable((t)+(SZ)))) \
+                )
 
 #define MATCH_LEFT_SKIP_TO_WORD() do { \
-                unsigned char lastchar = *(unsigned char*)t++; \
-                if (lastchar < 2 || (wc_left>1 && hasStrings_isNonWordChar(lastchar))) break; \
+                if (*(unsigned char*)t < 2) { t++; break; } \
+                if (wc_left>1) { const int l = hasStrings_isNonWordChar(t); if (l > 0) { t+=l; break; } } \
+                t++; \
               } while (t[0])
 
-          if (use_cmp_func)
-          {
-            while (t[0])
-            {
-              const int lln = cmp_func(t,(int) (t-name),n,ln);
-              if (lln && MATCH_RIGHT_CHECK_WORD(lln)) { matched = true; break; }
-              if (wc_left > 0)
-                MATCH_LEFT_SKIP_TO_WORD();
-              else
-                t++;
-            }
-          }
-          else
           {
             const char n0 = n[0];
             if (wc_left>0)
@@ -376,7 +419,7 @@ WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_li
               {
                 t = hasStrings_scan_for_char_match(t,n0);
                 if (!t) break;
-                if (t==name || t[-1] == 1 || (wc_left>1 && hasStrings_isNonWordChar(t[-1])))
+                if (t==name || t[-1] == 1 || (wc_left>1 && hasStrings_isNonWordChar(hasStrings_rewutf8(t-1,name))))
                 {
                   const int v = hasStrings_utf8cmp((const unsigned char *)t,(const unsigned char *)n,ln);
                   if (v>=0)
@@ -426,16 +469,63 @@ WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx2(const char **name_list, int name_li
 #undef PUSH_STACK
 }
 
-WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx(const char *name, const LineParser *lp,
-     int (*cmp_func)(const char *a, int apos, const char *b, int blen)  // if set, returns length of matched string (0 if no match)
-    )
+#ifndef WDL_HASSTRINGS_EXTRA_PARAMETERS
+WDL_HASSTRINGS_EXPORT bool WDL_hasStringsEx(const char *name, const LineParser *lp)
 {
-  return WDL_hasStringsEx2(&name,1,lp,cmp_func);
+  return WDL_hasStringsEx2(&name,1,lp);
 }
 
 WDL_HASSTRINGS_EXPORT bool WDL_hasStrings(const char *name, const LineParser *lp)
 {
-  return WDL_hasStringsEx(name,lp,NULL);
+  return WDL_hasStringsEx2(&name,1,lp);
+}
+#endif
+
+WDL_HASSTRINGS_EXPORT char *WDL_hasstrings_preproc_searchitem(char *wr, const char *src)
+{
+  while (*src)
+  {
+    unsigned char c = *(unsigned char*)src++;
+    if (c >= 'A' && c <= 'Z') c+='a'-'A';
+    else if (c == 0xC3)
+    {
+      const unsigned char ccf = *(unsigned char*)src;
+      const unsigned char cc = ccf & ~0x20;
+      if (WDL_IS_UTF8_BYTE2_LATIN1S_A(cc,ccf)) c = 'a';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_C(cc,ccf)) c = 'c';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_E(cc,ccf)) c = 'e';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_I(cc,ccf)) c = 'i';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_N(cc,ccf)) c = 'n';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_O(cc,ccf)) c = 'o';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_U(cc,ccf)) c = 'u';
+      else if (WDL_IS_UTF8_BYTE2_LATIN1S_Y(cc,ccf)) c = 'y';
+
+      if (c != 0xC3) src++;
+    }
+    else if (c == 0xE2)
+    {
+      // convert u+2018/2019 to '
+      if (*(unsigned char*)src == 0x80 && (((unsigned char*)src)[1]&~1) == 0x98)
+      {
+        c = '\'';
+        src+=2;
+      }
+    }
+    else
+    {
+      const int skipl = WDL_IS_UTF8_SKIPPABLE(c, *(unsigned char*)src);
+      if (skipl > 0)
+      {
+        src += skipl-1;
+        continue;
+      }
+    }
+
+    // we could also convert latin extended A characters to ascii here, but meh
+    *wr++ = c;
+  }
+  *wr=0;
+  return wr;
 }
 
 WDL_HASSTRINGS_EXPORT bool WDL_makeSearchFilter(const char *flt, LineParser *lp)
@@ -457,30 +547,7 @@ WDL_HASSTRINGS_EXPORT bool WDL_makeSearchFilter(const char *flt, LineParser *lp)
     char *p = (char *)lp->gettoken_str(x);
     if (lp->gettoken_quotingchar(x) || (strcmp(p,"NOT") && strcmp(p,"AND") && strcmp(p,"OR")))
     {
-      char *wr = p;
-      while (*p)
-      {
-        unsigned char c = *(unsigned char*)p++;
-        if (c >= 'A' && c <= 'Z') c+='a'-'A';
-        else if (c == 0xC3)
-        {
-          const unsigned char ccf = *(unsigned char*)p;
-          const unsigned char cc = ccf & ~0x20;
-          if (IS_UTF8_BYTE2_LATIN1S_A(cc,ccf)) c = 'a';
-          else if (IS_UTF8_BYTE2_LATIN1S_C(cc,ccf)) c = 'c';
-          else if (IS_UTF8_BYTE2_LATIN1S_E(cc,ccf)) c = 'e';
-          else if (IS_UTF8_BYTE2_LATIN1S_I(cc,ccf)) c = 'i';
-          else if (IS_UTF8_BYTE2_LATIN1S_N(cc,ccf)) c = 'n';
-          else if (IS_UTF8_BYTE2_LATIN1S_O(cc,ccf)) c = 'o';
-          else if (IS_UTF8_BYTE2_LATIN1S_U(cc,ccf)) c = 'u';
-          else if (IS_UTF8_BYTE2_LATIN1S_Y(cc,ccf)) c = 'y';
-
-          if (c != 0xC3) p++;
-        }
-        // we could also convert latin extended A characters to ascii here, but meh
-        *wr++ = c;
-      }
-      *wr=0;
+      WDL_hasstrings_preproc_searchitem(p, p);
     }
   }
 

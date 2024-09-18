@@ -112,7 +112,7 @@ struct HTREEITEM__;
 #define SWELL_PopupMenuRecv __SWELL_PREFIX_CLASSNAME(_trackpopupmenurecv)
 
 #define SWELL_TimerFuncTarget __SWELL_PREFIX_CLASSNAME(_tft)
-
+#define SWELL_MetalNotificationHandler __SWELL_PREFIX_CLASSNAME(_mnfh)
 
 #define SWELL_Menu __SWELL_PREFIX_CLASSNAME(_menu)
 
@@ -419,11 +419,9 @@ typedef struct WindowPropRec
   NSRect m_metal_lastframe;
 
   id m_metal_texture; // id<MTLTexture> -- owned if in full pipeline mode, otherwise reference to m_metal_drawable
-  id m_metal_pipelineState; // id<MTLRenderPipelineState> -- only used in full pipeline mode
-  id m_metal_commandQueue; // id<MTLCommandQueue> -- only used in full pipeline mode
   id m_metal_drawable; // id<CAMetalDrawable> -- only used in normal mode
   id m_metal_device; // id<MTLDevice> -- set to last-used-device
-  DWORD m_metal_device_lastchkt;
+  int m_metal_devicelist_updcnt;
 
 }
 - (id)initChild:(SWELL_DialogResourceIndex *)resstate Parent:(NSView *)parent dlgProc:(DLGPROC)dlgproc Param:(LPARAM)par;
@@ -458,6 +456,8 @@ typedef struct WindowPropRec
 -(int)swellSetProp:(const char *)name value:(void *)val ;
 -(NSOpenGLContext *)swellGetGLContext;
 - (void) setEnabledSwellNoFocus;
+- (void) setEnabled:(BOOL)en;
+- (BOOL) isEnabled;
 -(const char *)getSwellClass;
 
 // NSAccessibility
@@ -513,6 +513,7 @@ typedef struct WindowPropRec
   int m_wantraiseamt;
   bool  m_wantInitialKeyWindowOnShow;
   bool m_lastZoom;
+  bool m_disableMonitorAutosize;
 }
 - (id)initModeless:(SWELL_DialogResourceIndex *)resstate Parent:(HWND)parent dlgProc:(DLGPROC)dlgproc Param:(LPARAM)par outputHwnd:(HWND *)hwndOut forceStyles:(unsigned int)smask;
 - (id)initModelessForChild:(HWND)child owner:(HWND)owner styleMask:(unsigned int)smask;
@@ -595,15 +596,20 @@ HDC SWELL_CreateMetalDC(SWELL_hwndChild *);
 @interface SWELL_PopUpButton : NSPopUpButton
 {
   LONG m_style;
+  LONG_PTR m_userdata;
 }
+-(id)init;
 -(void)setSwellStyle:(LONG)style;
 -(LONG)getSwellStyle;
+-(LONG_PTR)getSwellUserData;
+-(void)setSwellUserData:(LONG_PTR)val;
 @end
 
 @interface SWELL_ComboBox : NSComboBox
 {
 @public
   LONG m_style;
+  LONG_PTR m_userdata;
   WDL_PtrList<char> *m_ids;
   int m_ignore_selchg; // used to track the last set selection state, to avoid getting feedback notifications
   bool m_disable_menu;
@@ -614,6 +620,8 @@ HDC SWELL_CreateMetalDC(SWELL_hwndChild *);
 -(LONG)getSwellStyle;
 - (void)swellDisableContextMenu:(bool)dis;
 - (NSMenu *)textView:(NSTextView *)view menu:(NSMenu *)menu forEvent:(NSEvent *)event atIndex:(NSUInteger)charIndex;
+-(LONG_PTR)getSwellUserData;
+-(void)setSwellUserData:(LONG_PTR)val;
 @end
 
 
@@ -769,7 +777,9 @@ SWELL_IMPLEMENT_GETOSXVERSION int SWELL_GetOSXVersion()
   {
     if (NSAppKitVersionNumber >= 1266.0)
     {
-      if (NSAppKitVersionNumber >= 2299.0)
+      if (NSAppKitVersionNumber >= 2487.0)
+        v = 0x1400;
+      else if (NSAppKitVersionNumber >= 2299.0)
         v = 0x1300;
       else if (NSAppKitVersionNumber >= 2100.0)
         v = 0x1200;
@@ -982,6 +992,7 @@ bool swell_isOSwindowmenu(SWELL_OSWINDOW osw);
 void swell_on_toplevel_raise(SWELL_OSWINDOW wnd); // called by swell-generic-gdk when a window is focused
 
 HWND swell_oswindow_to_hwnd(SWELL_OSWINDOW w);
+SWELL_OSWINDOW swell_oswindow_from_hwnd(HWND hwnd);
 void swell_oswindow_focus(HWND hwnd);
 void swell_oswindow_update_style(HWND hwnd, LONG oldstyle);
 void swell_oswindow_update_enable(HWND hwnd);
@@ -1345,6 +1356,10 @@ HFONT SWELL_GetDefaultFont(void);
 
 #endif
 
+extern void (*SWELL_DDrop_onDragLeave)();
+extern void (*SWELL_DDrop_onDragOver)(POINT pt);
+extern void (*SWELL_DDrop_onDragEnter)(void *hGlobal, POINT pt);
+extern const char* (*SWELL_DDrop_getDroppedFileTargetPath)(const char* extension);
 
 static WDL_STATICFUNC_UNUSED int ext_valid_for_extlist(const char *thisext, const char *extlist)
 {

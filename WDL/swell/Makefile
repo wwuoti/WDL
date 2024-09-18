@@ -19,7 +19,7 @@ COMPILER=GCC
 CC=gcc-10
 CXX=g++-10
 
-CFLAGS = -pipe -fvisibility=hidden -fno-math-errno -fPIC -DPIC -Wall -Wshadow -Wno-unused-function -Wno-multichar -Wtype-limits
+CFLAGS = -pipe -fvisibility=hidden -fno-math-errno -fPIC -DPIC -Wall -Wshadow -Wno-unused-function -Wno-multichar -Wtype-limits -Wno-unused-value
 
 CFLAGS += -DSWELL_MAKING_DYLIB
 
@@ -143,6 +143,9 @@ ifndef NOGDK
     endif
   endif
   LINKEXTRA += -lGL
+  ifdef PRELOAD_GDK
+    CFLAGS += -Wl,-z,lazy
+  endif
 endif
 
 CXXFLAGS = $(CFLAGS)

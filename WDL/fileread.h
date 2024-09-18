@@ -124,7 +124,7 @@ public:
 public:
   // allow_async=1 for unbuffered async, 2 for buffered async, =-1 for unbuffered sync
   // async aspect is unused on OS X, but the buffered mode affects F_NOCACHE
-  WDL_FileRead(const char *filename, int allow_async=1, int bufsize=8192, int nbufs=4, unsigned int mmap_minsize=0, unsigned int mmap_maxsize=0) : m_bufspace(4096 WDL_HEAPBUF_TRACEPARM("WDL_FileRead"))
+  WDL_FileRead(const char *filename, int allow_async=1, int bufsize=8192, int nbufs=4, unsigned int mmap_minsize=0, unsigned int mmap_maxsize=0) : m_bufspace(4096)
   {
     m_async_hashaderr=false;
     m_sync_bufmode_used=m_sync_bufmode_pos=0;
@@ -453,7 +453,6 @@ public:
 
   int AsyncRead(char *buf, int maxlen)
   {
-    char *obuf=buf;
     int lenout=0;
     if (m_file_position+maxlen > m_fsize)
     {
