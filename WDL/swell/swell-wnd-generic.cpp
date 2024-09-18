@@ -4669,7 +4669,7 @@ forceMouseMove:
               }
               else 
               {
-                bool changed = lvs->clear_sel() | lvs->set_sel(offs,true);
+                bool changed = lvs->clear_sel() || lvs->set_sel(offs,true);
                 lvs->m_selitem = offs;
 
                 if (lvs->m_is_listbox)
