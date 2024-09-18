@@ -33,6 +33,7 @@ else
 endif
 
 ifeq ($(COMPILER),CLANG)
+  CFLAGS += -ferror-limit=0 -std=c++14 -stdlib=libstdc++
   CC = clang
   CXX = clang++
 endif
