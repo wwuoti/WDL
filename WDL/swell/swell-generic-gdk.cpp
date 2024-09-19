@@ -2445,6 +2445,7 @@ struct bridgeState {
   ~bridgeState();
 
   GdkWindow *w;
+  Window *bridge_window;
   Window native_w;
   Display *native_disp;
   GdkWindow *cur_parent;
@@ -2462,6 +2463,7 @@ static bridgeState *s_last_gl_ctx;
 static WDL_PtrList<bridgeState> filter_windows;
 bridgeState::~bridgeState() 
 { 
+  GdkDisplay *gdkdisp = gdk_display_get_default();
   if (gl_ctx)
   {
     if (s_last_gl_ctx == this)
@@ -2482,14 +2484,15 @@ bridgeState::~bridgeState()
       // released (we could do g_object_unref() again here, but reparenting feels safer in this context)
       gdk_window_reparent(w,NULL,0,0);
     }
-    g_object_unref(G_OBJECT(w));
+    if (GDK_IS_X11_DISPLAY(gdkdisp))
+      g_object_unref(G_OBJECT(w));
 #ifdef GDK_WINDOWING_X11
-    if (GDK_IS_X11_WINDOW(w))
-    XDestroyWindow(native_disp,native_w);
+    if (GDK_IS_X11_DISPLAY(gdkdisp))
+      XDestroyWindow(native_disp,native_w);
 #endif
 #ifdef GDK_WINDOWING_WAYLAND
-  if GDK_IS_WAYLAND_WINDOW(w)
-    gdk_window_destroy(w);
+  //if GDK_IS_WAYLAND_DISPLAY(gdkdisp)
+  //  gdk_window_destroy(w);
 #endif
   }
 }
@@ -2497,7 +2500,20 @@ bridgeState::bridgeState(bool needrep, GdkWindow *_w, Window _nw, Display *_disp
 {
   hwnd_child = _hwnd_child;
   gl_ctx = NULL;
-  w=_w;
+  native_w=_nw;
+  native_disp=_disp;
+  lastvis=false;
+  need_reparent=needrep;
+  cur_parent = _curpar;
+  memset(&lastrect,0,sizeof(lastrect));
+  filter_windows.Add(this);
+}
+
+bridgeState::bridgeState(bool needrep, Window *_w, Window _nw, Display *_disp, GdkWindow *_curpar, HWND _hwnd_child)
+{
+  hwnd_child = _hwnd_child;
+  gl_ctx = NULL;
+  bridge_window = _w;
   native_w=_nw;
   native_disp=_disp;
   lastvis=false;
@@ -2509,6 +2525,7 @@ bridgeState::bridgeState(bool needrep, GdkWindow *_w, Window _nw, Display *_disp
 
 static LRESULT xbridgeProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+  GdkDisplay *gdkdisplay = gdk_display_get_default();
   switch (uMsg)
   {
     case WM_DESTROY:
@@ -2618,7 +2635,9 @@ static LRESULT xbridgeProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             gdk_window_get_geometry(bs->w,NULL,NULL,&w,&hh,&d);
 #else
             gint w=0,hh=0;
-            gdk_window_get_geometry(bs->w,NULL,NULL,&w,&hh);
+            //NOTE: segfaulting here, skip for now on wayland
+            if (GDK_IS_X11_DISPLAY (gdkdisplay))
+                gdk_window_get_geometry(bs->w,NULL,NULL,&w,&hh);
 #endif
             if (w > bs->lastrect.right-bs->lastrect.left) 
             {
@@ -2645,13 +2664,16 @@ static LRESULT xbridgeProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
             if (bs->need_reparent)
             {
-              gdk_window_reparent(bs->w,h->m_oswindow,tr.left,tr.top);
-              gdk_window_resize(bs->w, tr.right-tr.left,tr.bottom-tr.top);
-              bs->lastrect=tr;
+              if (GDK_IS_X11_DISPLAY (gdkdisplay))
+              {
+                  gdk_window_reparent(bs->w,h->m_oswindow,tr.left,tr.top);
+                  gdk_window_resize(bs->w, tr.right-tr.left,tr.bottom-tr.top);
+                  bs->lastrect=tr;
 
-              bs->cur_parent = h->m_oswindow;
-              bs->need_reparent=false;
-              if (vis && bs->lastvis) gdk_window_show(bs->w);
+                  bs->cur_parent = h->m_oswindow;
+                  bs->need_reparent=false;
+                  if (vis && bs->lastvis) gdk_window_show(bs->w);
+              }
             }
             else if (memcmp(&tr,&bs->lastrect,sizeof(RECT)))
             {
@@ -2660,9 +2682,12 @@ static LRESULT xbridgeProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
             if (vis && !bs->lastvis)
             {
+            if (GDK_IS_X11_DISPLAY (gdkdisplay))
+            {
               gdk_window_show(bs->w);
               gdk_window_raise(bs->w);
               bs->lastvis = true;
+            }
             }
           }
         }
@@ -2865,84 +2890,76 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
   }
 
   Display *disp = NULL;
-  Window x_window = 0;
+  Window w = 0;
   GdkWindow *gdkw = NULL;
-  Display* x_display;
-  GdkDisplay *gdkdisp = gdk_window_get_display(ospar);
+  Display* disp_other = XOpenDisplay(NULL);
+  printf("%p", &disp_other);
+  GdkDisplay *gdkdisp = gdk_display_get_default();
   int screen_num;
   if (GDK_IS_X11_DISPLAY (gdkdisp))
   {
-  
-  //TODO: find another way to create new x window
-  //x11 display should be retrieved from system, so that xwayland answers the call
-    x_display = XOpenDisplay(NULL);
-    screen_num = DefaultScreen(x_display);
-    x_window = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,
+    disp = gdk_x11_display_get_xdisplay(gdkdisp);
+    w = XCreateWindow(disp,GDK_WINDOW_XID(ospar),0,0,
             wdl_max(r->right-r->left,1),
             wdl_max(r->bottom-r->top,1),
             0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-    gdkw = x_window ? gdk_x11_window_foreign_new_for_display(gdk_display_get_default(),x_window) : NULL;
+    gdkw = w ? gdk_x11_window_foreign_new_for_display(gdkdisp,w) : NULL;
   }
 
 #ifdef GDK_WINDOWING_WAYLAND
   if (GDK_IS_WAYLAND_DISPLAY (gdkdisp))
   {
-  //x11 display should be retrieved from system, so that xwayland answers the call
-    x_display = XOpenDisplay(NULL);
-    screen_num = DefaultScreen(x_display);
-    x_window = XCreateWindow(x_display,RootWindow(x_display, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
-    //x_window = XCreateSimpleWindow(x_display, RootWindow(x_display, screen_num), 
-    //                                        0, 0, 400, 300, 1, 
-    //                                        BlackPixel(x_display, screen_num), 
-    //                                        WhitePixel(x_display, screen_num));
-    XMapWindow(x_display, RootWindow(x_display, screen_num));
-    XMapWindow(x_display, x_window);
-    XFlush(x_display);
-    //XClearWindow(x_display, x_window);
-    //GdkWindowAttr attr={0,};
-    ////attr.title = (char *)hwnd->m_title.Get();
-    ////attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
-    //attr.x = r->left;
-    //attr.y = r->top;
-    //attr.width = r->right-r->left;
-    //attr.height = r->bottom-r->top;
-    //attr.wclass = GDK_INPUT_OUTPUT;
-    //const char *appname = g_swell_appname;
-    //attr.wmclass_name = (gchar*)appname;
-    //attr.wmclass_class = (gchar*)appname;
-    //attr.window_type = GDK_WINDOW_CHILD;
-    //gdkw = gdk_window_new(ospar, &attr, 0);
+    //x11 display should be retrieved from system, so that xwayland answers the call
+    disp = XOpenDisplay(NULL);
+    screen_num = DefaultScreen(disp);
+    w = XCreateWindow(disp,RootWindow(disp, screen_num),0,0,r->right-r->left,r->bottom-r->top,0,CopyFromParent, InputOutput, CopyFromParent, 0, NULL);
+    XMapWindow(disp, RootWindow(disp, screen_num));
+    XMapWindow(disp, w);
+    XFlush(disp);
+    GdkWindowAttr attr={0,};
+    //attr.title = (char *)hwnd->m_title.Get();
+    //attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
+    attr.x = r->left;
+    attr.y = r->top;
+    attr.width = r->right-r->left;
+    attr.height = r->bottom-r->top;
+    attr.wclass = GDK_INPUT_OUTPUT;
+    const char *appname = g_swell_appname;
+    attr.wmclass_name = (gchar*)appname;
+    attr.wmclass_class = (gchar*)appname;
+    attr.window_type = GDK_WINDOW_CHILD;
+    gdkw = gdk_window_new(ospar, &attr, 0);
   }
 
 #endif
 
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
   //TODO: bridgeState likely can't work with Wayland gdk window and pure X11 window created for XWayland
-  bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,x_window,disp, ospar, hwnd) : NULL;
+  bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar, hwnd) : NULL;
   hwnd->m_classname = bridge_class_name;
   hwnd->m_private_data = (INT_PTR) bs;
   if (gdkw)
   {
-    *wref = (void *) x_window;
+    *wref = (void *) w;
 
 #ifdef GDK_WINDOWING_X11
-  if (GDK_IS_X11_DISPLAY(gdk_window_get_display(ospar)))
-    XSelectInput(disp, x_window, StructureNotifyMask | SubstructureNotifyMask);
+    if (GDK_IS_X11_DISPLAY(gdk_window_get_display(ospar)))
+      XSelectInput(disp, w, StructureNotifyMask | SubstructureNotifyMask);
 #endif
-static bool filt_add;
+    static bool filt_add;
 
 #ifdef GDK_WINDOWING_X11
 
-  if (GDK_IS_X11_DISPLAY (gdkdisp))
-  {
-    if (!filt_add)
+    if (GDK_IS_X11_DISPLAY (gdkdisp))
     {
-      filt_add=true;
-      gdk_window_add_filter(NULL, filterCreateShowProc, NULL);
+      if (!filt_add)
+      {
+        filt_add=true;
+        gdk_window_add_filter(NULL, filterCreateShowProc, NULL);
+      }
+      SetTimer(hwnd,1,100,NULL);
+      if (!need_reparent) SendMessage(hwnd,WM_SIZE,SIZE_RESTORED,0);
     }
-    SetTimer(hwnd,1,100,NULL);
-    if (!need_reparent) SendMessage(hwnd,WM_SIZE,SIZE_RESTORED,0);
-  }
   }
 #endif
   return hwnd;
