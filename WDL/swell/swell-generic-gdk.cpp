@@ -772,6 +772,8 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
 #ifdef SWELL_LICE_GDI
   if (hwnd && hwnd->m_backingstore && hwnd->m_oswindow)
   {
+    //printf("Updatetoscreen: rect left %d right %d bottom %d top %d \n", rect->left, rect->right, rect->bottom, rect->top);
+    //TEST IMPLEMENTATION
     LICE_IBitmap *bm = hwnd->m_backingstore;
     LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
 
@@ -784,11 +786,30 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
     if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
     cairo_paint(crc);
+    auto count = cairo_get_reference_count(crc);
+    printf("reference count %u \n", count);
+    //TODO: there's still two references, maybe that's why reference fails?
     //cairo_destroy(crc);
 
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
 
-    //if (temp_surface) bm->Extended(0xca140,temp_surface); // release
+    if (temp_surface) bm->Extended(0xca140,temp_surface); // release
+    
+    //LICE_IBitmap *bm = hwnd->m_backingstore;
+    //LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
+
+    //GdkRectangle rrr={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
+    //gdk_window_begin_paint_rect(hwnd->m_oswindow, &rrr);
+
+    //cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
+    //cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
+    //if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
+    //cairo_paint(crc);
+    ////cairo_destroy(crc);
+
+    //gdk_window_end_paint(hwnd->m_oswindow);
+
+    ////if (temp_surface) bm->Extended(0xca140,temp_surface); // release
 
   }
 #endif
@@ -1038,6 +1059,7 @@ static void OnExposeEvent(GdkEventExpose *exp)
 
   if (tmpbm.getWidth()>0 && tmpbm.getHeight()>0) 
   {
+    printf("Drawing r left %d right %d bottom %d top %d \n", r.left, r.right, r.bottom, r.top);
     void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int bmout_ypos, bool forceref);
     SWELL_internalLICEpaint(hwnd, &tmpbm, r.left, r.top, forceref);
 
@@ -1054,7 +1076,7 @@ static void OnExposeEvent(GdkEventExpose *exp)
     //cairo_destroy(crc);
 
     gdk_window_end_draw_frame(exp->window, context);
-    //if (temp_surface) bm->Extended(0xca140,temp_surface); // release
+    if (temp_surface) bm->Extended(0xca140,temp_surface); // release
   }
 #endif
 }
@@ -1737,6 +1759,7 @@ static void swell_gdkEventHandler(GdkEvent *evt, gpointer data)
   GdkEvent *oldEvt = s_cur_evt;
   s_cur_evt = evt;
 
+  printf("GDK event %d \n", evt->type);
   switch (evt->type)
   {
     case GDK_FOCUS_CHANGE:
