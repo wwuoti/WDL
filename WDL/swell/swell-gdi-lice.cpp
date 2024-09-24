@@ -1538,7 +1538,8 @@ void ReleaseDC(HWND h, HDC hdc)
         if (dr.bottom < r.bottom) r.bottom=dr.bottom;
 #endif
 
-        if (r.top<r.bottom && r.left<r.right) swell_oswindow_updatetoscreen(par,&r);
+        if (r.top<r.bottom && r.left<r.right)
+            swell_oswindow_updatetoscreen(par,&r);
       }
     }
   }

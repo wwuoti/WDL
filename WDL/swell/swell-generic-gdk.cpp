@@ -772,12 +772,16 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
 #ifdef SWELL_LICE_GDI
   if (hwnd && hwnd->m_backingstore && hwnd->m_oswindow)
   {
-    //printf("Updatetoscreen: rect left %d right %d bottom %d top %d \n", rect->left, rect->right, rect->bottom, rect->top);
     //TEST IMPLEMENTATION
     LICE_IBitmap *bm = hwnd->m_backingstore;
     LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
 
     cairo_rectangle_int_t cairo_rect={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
+    //TODO: the area rendered is too small
+    //cairo_rectangle_int_t cairo_rect={0,0,3840,2160};
+
+    printf("Updatetoscreen: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
+
     const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(hwnd->m_oswindow, rrr);
 
@@ -785,13 +789,22 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
     if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
+
     cairo_paint(crc);
-    auto count = cairo_get_reference_count(crc);
-    printf("reference count %u \n", count);
-    //TODO: there's still two references, maybe that's why reference fails?
-    //cairo_destroy(crc);
+    //Debug oswindow paint
+    //cairo_paint_with_alpha(crc, 0.1);
+ 
+    //GREEN OVERLAY
+    cairo_set_source_rgba(crc, 0.0, 1.0, 0.0, 0.5); 
+    cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+    cairo_fill(crc);
+    cairo_paint_with_alpha(crc, 0.1);
+    //GREEN OVERLAY
+
 
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
+    //auto count = cairo_get_reference_count(crc);
+    //printf("reference count %u \n", count);
 
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
     
@@ -1059,7 +1072,6 @@ static void OnExposeEvent(GdkEventExpose *exp)
 
   if (tmpbm.getWidth()>0 && tmpbm.getHeight()>0) 
   {
-    printf("Drawing r left %d right %d bottom %d top %d \n", r.left, r.right, r.bottom, r.top);
     void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int bmout_ypos, bool forceref);
     SWELL_internalLICEpaint(hwnd, &tmpbm, r.left, r.top, forceref);
 
@@ -1067,13 +1079,20 @@ static void OnExposeEvent(GdkEventExpose *exp)
     const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(exp->window, rrr);
 
-    //cairo_t *crc = gdk_cairo_create (exp->window);
+    printf("OnExposeEvent: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
+
     cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
     LICE_IBitmap *bm = hwnd->m_backingstore;
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
     if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
     cairo_paint(crc);
-    //cairo_destroy(crc);
+
+    //RED OVERLAY
+    cairo_set_source_rgba(crc, 1.0, 0.0, 0.0, 0.5); 
+    cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+    cairo_fill(crc);
+    cairo_paint_with_alpha(crc, 0.1);
+    //RED OVERLAY
 
     gdk_window_end_draw_frame(exp->window, context);
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
@@ -1759,7 +1778,7 @@ static void swell_gdkEventHandler(GdkEvent *evt, gpointer data)
   GdkEvent *oldEvt = s_cur_evt;
   s_cur_evt = evt;
 
-  printf("GDK event %d \n", evt->type);
+  //printf("GDK event %d \n", evt->type);
   switch (evt->type)
   {
     case GDK_FOCUS_CHANGE:
