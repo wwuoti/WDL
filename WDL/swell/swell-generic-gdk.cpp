@@ -772,6 +772,14 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
 #ifdef SWELL_LICE_GDI
   if (hwnd && hwnd->m_backingstore && hwnd->m_oswindow)
   {
+    RECT cr;
+    cr.left=cr.top=0;
+    cr.right = hwnd->m_position.right - hwnd->m_position.left;
+    cr.bottom = hwnd->m_position.bottom - hwnd->m_position.top;
+
+    hwnd->m_backingstore->resize(cr.right-cr.left,cr.bottom-cr.top);
+    rect = &cr;
+
     //TEST IMPLEMENTATION
     LICE_IBitmap *bm = hwnd->m_backingstore;
     LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
@@ -780,31 +788,30 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     //TODO: the area rendered is too small
     //cairo_rectangle_int_t cairo_rect={0,0,3840,2160};
 
-    printf("Updatetoscreen: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
+    //printf("Updatetoscreen: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
 
     const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(hwnd->m_oswindow, rrr);
 
-    //cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
     cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
     if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
-
-    cairo_paint(crc);
-    //Debug oswindow paint
-    //cairo_paint_with_alpha(crc, 0.1);
- 
-    //GREEN OVERLAY
-    cairo_set_source_rgba(crc, 0.0, 1.0, 0.0, 0.5); 
     cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+    cairo_clip(crc);
+    cairo_paint(crc);
+
+    //RAND COLOR OVERLAY
+    auto r1 = ((double) rand() / (RAND_MAX));
+    auto r2 = ((double) rand() / (RAND_MAX));
+    auto r3 = ((double) rand() / (RAND_MAX));
+    cairo_set_source_rgba(crc, r1, r2, r3, 0.5); 
+    cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+    cairo_clip(crc);
     cairo_fill(crc);
     cairo_paint_with_alpha(crc, 0.1);
-    //GREEN OVERLAY
-
+    //RAND COLOR OVERLAY
 
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
-    //auto count = cairo_get_reference_count(crc);
-    //printf("reference count %u \n", count);
 
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
     
@@ -1085,14 +1092,20 @@ static void OnExposeEvent(GdkEventExpose *exp)
     LICE_IBitmap *bm = hwnd->m_backingstore;
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
     if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
+    cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+    cairo_clip(crc);
     cairo_paint(crc);
 
-    //RED OVERLAY
-    cairo_set_source_rgba(crc, 1.0, 0.0, 0.0, 0.5); 
-    cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
-    cairo_fill(crc);
-    cairo_paint_with_alpha(crc, 0.1);
-    //RED OVERLAY
+    //RAND COLOR OVERLAY
+    //auto r1 = ((double) rand() / (RAND_MAX));
+    //auto r2 = ((double) rand() / (RAND_MAX));
+    //auto r3 = ((double) rand() / (RAND_MAX));
+    //cairo_set_source_rgba(crc, r1, r2, r3, 0.5); 
+    //cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+    //cairo_clip(crc);
+    //cairo_fill(crc);
+    //cairo_paint_with_alpha(crc, 0.9);
+    //RAND COLOR OVERLAY
 
     gdk_window_end_draw_frame(exp->window, context);
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
