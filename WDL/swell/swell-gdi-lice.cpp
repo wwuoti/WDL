@@ -1648,7 +1648,7 @@ void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int
         hwnd->m_wndproc(hwnd,WM_PAINT,(WPARAM)&ctx,0);
       }
 
-       hwnd->m_paintctx = oldpaintctx;
+      hwnd->m_paintctx = oldpaintctx;
    
       // it might be good to blit here on some OSes, rather than from the top level caller...
       hwnd->m_invalidated=false;
