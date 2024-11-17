@@ -772,37 +772,47 @@ void swell_oswindow_maximize(HWND hwnd, bool wantmax) // false=restore
 void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
 {
 #ifdef SWELL_LICE_GDI
+
   if (hwnd && hwnd->m_backingstore && hwnd->m_oswindow)
   {
-    RECT cr;
-    cr.left=cr.top=0;
-    cr.right = hwnd->m_position.right - hwnd->m_position.left;
-    cr.bottom = hwnd->m_position.bottom - hwnd->m_position.top;
+    //RECT cr;
+    //cr.left=cr.top=0;
+    //cr.right = hwnd->m_position.right - hwnd->m_position.left;
+    //cr.bottom = hwnd->m_position.bottom - hwnd->m_position.top;
 
-    hwnd->m_backingstore->resize(cr.right-cr.left,cr.bottom-cr.top);
-    rect = &cr;
+    //hwnd->m_backingstore->resize(cr.right-cr.left,cr.bottom-cr.top);
+    //rect = &cr;
 
     //TEST IMPLEMENTATION
     LICE_IBitmap *bm = hwnd->m_backingstore;
-    LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
+    //LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
 
-    cairo_rectangle_int_t cairo_rect={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
+
+    //void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int bmout_ypos, bool forceref);
+    //SWELL_internalLICEpaint(hwnd, &tmpbm, rect->left, rect->top, true);
+
+    //cairo_rectangle_int_t cairo_rect={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
     //TODO: the area rendered is too small
-    //cairo_rectangle_int_t cairo_rect={0,0,3840,2160};
+    cairo_rectangle_int_t cairo_rect={0,0,3840,2160};
 
     //printf("Updatetoscreen: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
 
-    const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
+    cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(hwnd->m_oswindow, rrr);
+    if (!context)
+        return;
 
     cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
     cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
-    if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
-    cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
-    cairo_clip(crc);
-    cairo_paint(crc);
+    if (temp_surface && cairo_surface_get_type(temp_surface) == CAIRO_SURFACE_TYPE_IMAGE )
+    {
+        cairo_set_source_surface(crc, temp_surface, 0,0);
+        cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
+        //cairo_clip(crc);
+        cairo_paint(crc);
 
-    //RAND COLOR OVERLAY
+
+#ifdef RAND_COLOR_OVERLAY
     auto r1 = ((double) rand() / (RAND_MAX));
     auto r2 = ((double) rand() / (RAND_MAX));
     auto r3 = ((double) rand() / (RAND_MAX));
@@ -811,12 +821,18 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     cairo_clip(crc);
     cairo_fill(crc);
     cairo_paint_with_alpha(crc, 0.1);
-    //RAND COLOR OVERLAY
-
+    printf("Colouring with r1 %f r2 %f r3 %f \n", r1, r2, r3);
+#endif //RAND_COLOR_OVERLAY
+    cairo_surface_flush(temp_surface);
+    gdk_window_flush(hwnd->m_oswindow);
+    }
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
+    cairo_region_destroy(rrr);
 
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
-    
+    gdk_window_invalidate_rect(hwnd->m_oswindow, NULL, true);
+    gdk_window_process_updates(hwnd->m_oswindow, true);
+
     //LICE_IBitmap *bm = hwnd->m_backingstore;
     //LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
 
@@ -1072,7 +1088,11 @@ static void OnExposeEvent(GdkEventExpose *exp)
   r.bottom=r.top+exp->area.height; 
   r.right=r.left+exp->area.width;
 
-  if (!hwnd->m_backingstore) hwnd->m_backingstore = new LICE_CairoBitmap;
+  if (!hwnd->m_backingstore)
+  {
+      hwnd->m_backingstore = new LICE_CairoBitmap;
+      printf("Creating new LICE_CairoBitmap \n");
+  }
 
   bool forceref = hwnd->m_backingstore->resize(cr.right-cr.left,cr.bottom-cr.top);
   if (forceref) r = cr;
@@ -1088,7 +1108,7 @@ static void OnExposeEvent(GdkEventExpose *exp)
     const cairo_region_t* rrr = cairo_region_create_rectangle(&cairo_rect);
     GdkDrawingContext* context = gdk_window_begin_draw_frame(exp->window, rrr);
 
-    printf("OnExposeEvent: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
+    //printf("OnExposeEvent: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
 
     cairo_t * crc = gdk_drawing_context_get_cairo_context(context);
     LICE_IBitmap *bm = hwnd->m_backingstore;
@@ -1098,18 +1118,8 @@ static void OnExposeEvent(GdkEventExpose *exp)
     cairo_clip(crc);
     cairo_paint(crc);
 
-    //RAND COLOR OVERLAY
-    //auto r1 = ((double) rand() / (RAND_MAX));
-    //auto r2 = ((double) rand() / (RAND_MAX));
-    //auto r3 = ((double) rand() / (RAND_MAX));
-    //cairo_set_source_rgba(crc, r1, r2, r3, 0.5); 
-    //cairo_rectangle(crc, cairo_rect.x, cairo_rect.y, cairo_rect.width, cairo_rect.height);
-    //cairo_clip(crc);
-    //cairo_fill(crc);
-    //cairo_paint_with_alpha(crc, 0.9);
-    //RAND COLOR OVERLAY
-
     gdk_window_end_draw_frame(exp->window, context);
+    gdk_window_invalidate_rect(hwnd->m_oswindow, &exp->area, true);
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
   }
 #endif
@@ -1476,7 +1486,6 @@ static HWND getMouseTarget(SWELL_OSWINDOW osw, POINT p, const HWND *hwnd_has_osw
   return ChildWindowFromPoint(hwnd,p);
 }
 
-
 static void OnMotionEvent(GdkEventMotion *m)
 {
   swell_lastMessagePos = MAKELONG(((int)m->x_root&0xffff),((int)m->y_root&0xffff));
@@ -1485,8 +1494,9 @@ static void OnMotionEvent(GdkEventMotion *m)
 
   if (hwnd)
   {
-    //TODO: find out why the y axis needs offset
     POINT p2={(int)m->x_root, (int)m->y_root+Y_COORD_OFFSET};
+    //printf("p1 x: %u p1 y: %u \n", p.x, p.y );
+    //printf("p2 x: %u p2 y: %u \n", p2.x, p2.y );
     ScreenToClient(hwnd, &p2);
     if (hwnd) hwnd->Retain();
     SWELL_SendMouseMessage(hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(p2.x, p2.y));
