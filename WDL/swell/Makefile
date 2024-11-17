@@ -73,6 +73,10 @@ else
   endif
 endif
 
+ifdef RAND_COLOR_OVERLAY
+CFLAGS += -DRAND_COLOR_OVERLAY
+endif
+
 
 ifdef DEBUG
 CFLAGS += -O0 -g -D_DEBUG
