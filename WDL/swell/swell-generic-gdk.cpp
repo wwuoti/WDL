@@ -66,8 +66,8 @@ extern "C" {
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
                                                                 //
-//const int Y_COORD_OFFSET = -40;
-const int Y_COORD_OFFSET = 0;
+const int Y_COORD_OFFSET = -35;
+//const int Y_COORD_OFFSET = 0;
 
 static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
 {
@@ -775,25 +775,10 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
 
   if (hwnd && hwnd->m_backingstore && hwnd->m_oswindow)
   {
-    //RECT cr;
-    //cr.left=cr.top=0;
-    //cr.right = hwnd->m_position.right - hwnd->m_position.left;
-    //cr.bottom = hwnd->m_position.bottom - hwnd->m_position.top;
-
-    //hwnd->m_backingstore->resize(cr.right-cr.left,cr.bottom-cr.top);
-    //rect = &cr;
-
-    //TEST IMPLEMENTATION
     LICE_IBitmap *bm = hwnd->m_backingstore;
-    //LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
-
-
-    //void SWELL_internalLICEpaint(HWND hwnd, LICE_IBitmap *bmout, int bmout_xpos, int bmout_ypos, bool forceref);
-    //SWELL_internalLICEpaint(hwnd, &tmpbm, rect->left, rect->top, true);
-
-    //cairo_rectangle_int_t cairo_rect={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
+    cairo_rectangle_int_t cairo_rect={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
     //TODO: the area rendered is too small
-    cairo_rectangle_int_t cairo_rect={0,0,3840,2160};
+    //cairo_rectangle_int_t cairo_rect={0,0,3840,2160};
 
     //printf("Updatetoscreen: width %d height %d at x %d y %d \n", cairo_rect.width, cairo_rect.height, cairo_rect.x, cairo_rect.y);
 
@@ -821,34 +806,17 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     cairo_clip(crc);
     cairo_fill(crc);
     cairo_paint_with_alpha(crc, 0.1);
-    printf("Colouring with r1 %f r2 %f r3 %f \n", r1, r2, r3);
+    snprintf("Colouring with r1 %f r2 %f r3 %f \n", r1, r2, r3);
 #endif //RAND_COLOR_OVERLAY
     cairo_surface_flush(temp_surface);
     gdk_window_flush(hwnd->m_oswindow);
     }
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
-    cairo_region_destroy(rrr);
 
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
-    gdk_window_invalidate_rect(hwnd->m_oswindow, NULL, true);
+
+    swell_oswindow_invalidate(hwnd, rect);
     gdk_window_process_updates(hwnd->m_oswindow, true);
-
-    //LICE_IBitmap *bm = hwnd->m_backingstore;
-    //LICE_SubBitmap tmpbm(bm,rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top);
-
-    //GdkRectangle rrr={rect->left,rect->top,rect->right-rect->left,rect->bottom-rect->top};
-    //gdk_window_begin_paint_rect(hwnd->m_oswindow, &rrr);
-
-    //cairo_t * crc = gdk_cairo_create (hwnd->m_oswindow);
-    //cairo_surface_t *temp_surface = (cairo_surface_t*)bm->Extended(0xca140,NULL);
-    //if (temp_surface) cairo_set_source_surface(crc, temp_surface, 0,0);
-    //cairo_paint(crc);
-    ////cairo_destroy(crc);
-
-    //gdk_window_end_paint(hwnd->m_oswindow);
-
-    ////if (temp_surface) bm->Extended(0xca140,temp_surface); // release
-
   }
 #endif
 }
@@ -954,7 +922,7 @@ static GdkAtom urilistatom()
 
 static void OnSelectionRequestEvent(GdkEventSelection *b)
 {
-  //printf("got sel req %s\n",gdk_atom_name(b->target));
+  //snprintf("got sel req %s\n",gdk_atom_name(b->target));
   GdkAtom prop=GDK_NONE;
 
   if (swell_dragsrc_osw && b->window == swell_dragsrc_osw)
@@ -1119,7 +1087,7 @@ static void OnExposeEvent(GdkEventExpose *exp)
     cairo_paint(crc);
 
     gdk_window_end_draw_frame(exp->window, context);
-    gdk_window_invalidate_rect(hwnd->m_oswindow, &exp->area, true);
+    swell_oswindow_invalidate(hwnd, &r);
     if (temp_surface) bm->Extended(0xca140,temp_surface); // release
   }
 #endif
@@ -1495,8 +1463,8 @@ static void OnMotionEvent(GdkEventMotion *m)
   if (hwnd)
   {
     POINT p2={(int)m->x_root, (int)m->y_root+Y_COORD_OFFSET};
-    //printf("p1 x: %u p1 y: %u \n", p.x, p.y );
-    //printf("p2 x: %u p2 y: %u \n", p2.x, p2.y );
+    printf("p1 x: %u p1 y: %u \n", p.x, p.y );
+    printf("p2 x: %u p2 y: %u \n", p2.x, p2.y );
     ScreenToClient(hwnd, &p2);
     if (hwnd) hwnd->Retain();
     SWELL_SendMouseMessage(hwnd, WM_MOUSEMOVE, 0, MAKELPARAM(p2.x, p2.y));
@@ -1526,7 +1494,6 @@ static void OnScrollEvent(GdkEventScroll *b)
       SWELL_SendMouseMessage(hwnd, msg, (v<<16), MAKELPARAM(p2.x, p2.y));
       if (hwnd) hwnd->Release();
     }
-    // TODO: ensure window is updated here in similar fashion to changing hover target window!
   }
 }
 
@@ -2258,7 +2225,16 @@ void swell_oswindow_resize(SWELL_OSWINDOW wnd, int reposflag, RECT f)
     f.bottom -= gr.height - ch;
   }
 #endif
-  if ((reposflag&3)==3) gdk_window_move_resize(wnd,f.left,f.top,f.right-f.left,f.bottom-f.top);
+  if ((reposflag&3)==3)
+  {
+      printf("Move and resize to x: %d y: %d width: %d height: %d \n", f.left, f.top, f.right-f.left,f.bottom-f.top );
+        GdkWindow *parent = gdk_window_get_parent(wnd);
+        if (parent == NULL) 
+            printf("Toplevel\n");
+        else
+            printf("child \n");
+      gdk_window_move_resize(wnd,f.left,f.top,f.right-f.left,f.bottom-f.top);
+  }
   else if (reposflag&2) gdk_window_resize(wnd,f.right-f.left,f.bottom-f.top);
   else if (reposflag&1) gdk_window_move(wnd,f.left,f.top);
 }
