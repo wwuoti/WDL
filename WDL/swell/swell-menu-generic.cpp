@@ -1301,7 +1301,8 @@ int TrackPopupMenu(HMENU hMenu, int flags, int xpos, int ypos, int resvd, HWND h
 
   if (!resvd || resvd == 0xbeee) swell_menu_ignore_mousemove_from = GetTickCount();
 
-  HWND hh=new HWND__(NULL,0,NULL,"menu",false,submenuWndProc,NULL, hwnd);
+  //NOTE: assign parent here to retrieve it later in GDK!
+  HWND hh=new HWND__(hwnd,0,NULL,"menu",false,submenuWndProc,NULL, hwnd);
 
   submenuWndProc(hh,WM_CREATE,0,(LPARAM)hMenu);
 
