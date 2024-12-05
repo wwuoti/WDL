@@ -66,8 +66,8 @@ extern "C" {
 
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
                                                                 //
-const int Y_COORD_OFFSET = -35;
-//const int Y_COORD_OFFSET = 0;
+//const int Y_COORD_OFFSET = -35;
+const int Y_COORD_OFFSET = 0;
 
 static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
 {
@@ -2232,7 +2232,15 @@ void swell_oswindow_resize(SWELL_OSWINDOW wnd, int reposflag, RECT f)
         if (parent == NULL) 
             printf("Toplevel\n");
         else
+        {
+        GdkRectangle frame;
+        gdk_window_get_frame_extents(parent, &frame);
+
+        printf("Parent window size: %dx%d at position (%d, %d)\n",
+               frame.width, frame.height, frame.x, frame.y);
             printf("child \n");
+            gdk_window_set_transient_for(wnd, parent);
+        }
       gdk_window_move_resize(wnd,f.left,f.top,f.right-f.left,f.bottom-f.top);
   }
   else if (reposflag&2) gdk_window_resize(wnd,f.right-f.left,f.bottom-f.top);
