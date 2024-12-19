@@ -67,7 +67,9 @@ extern "C" {
 static void (*_gdk_drag_drop_done)(GdkDragContext *, gboolean); // may not always be available
                                                                 //
 //const int Y_COORD_OFFSET = -35;
+//const int X_COORD_OFFSET = -857;
 const int Y_COORD_OFFSET = 0;
+const int X_COORD_OFFSET = 0;
 
 static guint32 _gdk_x11_window_get_desktop(GdkWindow *window)
 {
@@ -1462,7 +1464,7 @@ static void OnMotionEvent(GdkEventMotion *m)
 
   if (hwnd)
   {
-    POINT p2={(int)m->x_root, (int)m->y_root+Y_COORD_OFFSET};
+    POINT p2={(int)m->x_root+X_COORD_OFFSET, (int)m->y_root+Y_COORD_OFFSET};
     printf("p1 x: %u p1 y: %u \n", p.x, p.y );
     printf("p2 x: %u p2 y: %u \n", p2.x, p2.y );
     ScreenToClient(hwnd, &p2);
@@ -1480,7 +1482,7 @@ static void OnScrollEvent(GdkEventScroll *b)
   HWND hwnd = getMouseTarget(b->window,p,NULL);
   if (hwnd)
   {
-    POINT p2={(int)b->x_root, (int)b->y_root+Y_COORD_OFFSET};
+    POINT p2={(int)b->x_root+X_COORD_OFFSET, (int)b->y_root+Y_COORD_OFFSET};
     // p2 is screen coordinates for WM_MOUSEWHEEL
 
     int msg=(b->direction == GDK_SCROLL_UP || b->direction == GDK_SCROLL_DOWN) ? WM_MOUSEWHEEL :
@@ -1507,7 +1509,7 @@ static void OnButtonEvent(GdkEventButton *b)
   POINT p={(int)b->x, (int)b->y};
   HWND hwnd2 = getMouseTarget(b->window,p,&hwnd);
 
-  POINT p2={(int)b->x_root, (int)b->y_root+Y_COORD_OFFSET};
+  POINT p2={(int)b->x_root+X_COORD_OFFSET, (int)b->y_root+Y_COORD_OFFSET};
   ScreenToClient(hwnd2, &p2);
 
   int msg=WM_LBUTTONDOWN;
