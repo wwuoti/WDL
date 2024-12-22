@@ -808,10 +808,8 @@ void swell_oswindow_updatetoscreen(HWND hwnd, RECT *rect)
     cairo_clip(crc);
     cairo_fill(crc);
     cairo_paint_with_alpha(crc, 0.1);
-    snprintf("Colouring with r1 %f r2 %f r3 %f \n", r1, r2, r3);
+    printf("Colouring with r1 %f r2 %f r3 %f \n", r1, r2, r3);
 #endif //RAND_COLOR_OVERLAY
-    cairo_surface_flush(temp_surface);
-    gdk_window_flush(hwnd->m_oswindow);
     }
     gdk_window_end_draw_frame(hwnd->m_oswindow, context);
 
