@@ -3010,8 +3010,6 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
     XMapWindow(disp, w);
     XFlush(disp);
     GdkWindowAttr attr={0,};
-    //attr.title = (char *)hwnd->m_title.Get();
-    //attr.event_mask = GDK_ALL_EVENTS_MASK|GDK_EXPOSURE_MASK;
     attr.x = r->left;
     attr.y = r->top;
     attr.width = r->right-r->left;
@@ -3027,7 +3025,6 @@ HWND SWELL_CreateXBridgeWindow(HWND viewpar, void **wref, const RECT *r)
 #endif
 
   hwnd = new HWND__(viewpar,0,r,NULL, true, xbridgeProc);
-  //TODO: bridgeState likely can't work with Wayland gdk window and pure X11 window created for XWayland
   bridgeState *bs = gdkw ? new bridgeState(need_reparent,gdkw,w,disp, ospar, hwnd) : NULL;
   hwnd->m_classname = bridge_class_name;
   hwnd->m_private_data = (INT_PTR) bs;
